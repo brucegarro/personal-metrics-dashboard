@@ -1,0 +1,13 @@
+.git
+.gitignore
+.vscode
+.venv
+__pycache__
+*.pyc
+.DS_Store
+*.log
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+node_modules
