@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
+# To run this container this command can be used:
+# docker run --rm -it -p 8000:8000 --name fastapi ghcr.io/brucegarro/personal-metrics-dashboard:dev
+
 FROM python:3.12-slim
 
 # Don't write .pyc files, dont buffer cmd line input/output
