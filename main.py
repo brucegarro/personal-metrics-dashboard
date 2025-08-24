@@ -20,7 +20,7 @@ def read_root():
 @app.get("/oura_callback")
 async def handle_callback(
     code: str,
-    state: Optional[str] = None,
+    state: str,
     error: Optional[str] = None
 ):
     """
@@ -31,10 +31,10 @@ async def handle_callback(
         return {"message": f"Error during callback: {error}"}
     
     oura_metrics = OuraMetrics()
-    oura_metrics.handle_callback(code)
+    access_token = oura_metrics.handle_callback(code)
     
     return {
-        "code": code,
+        "access_token": access_token,
         "state": state,
         "message": "Callback handled successfully"
     }
@@ -42,7 +42,11 @@ async def handle_callback(
 
 @app.get("/health")
 def health_check():
+    oura_metrics = OuraMetrics()
+    url = oura_metrics.get_oura_auth_url()
+    
     return {
+        "url": url,
         "status": "healthy"
     }
 

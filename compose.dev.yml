@@ -13,6 +13,24 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - PIP_NO_CACHE_DIR=1
+      # Oura OAuth config
+      - OURA_CLIENT_ID=${OURA_CLIENT_ID}
+      - OURA_CLIENT_SECRET=${OURA_CLIENT_SECRET}
+      - OURA_REDIRECT_URI=https://${NGROK_DOMAIN}/oura_callback                                                               
     volumes:
       - .:/app
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  ngrok:
+      image: ngrok/ngrok:latest
+      container_name: ngrok
+      depends_on:
+        - app
+      environment:
+        - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      command:
+        - "http"
+        - "--domain=${NGROK_DOMAIN}"
+        - "app:8000"
+      ports:
+        - "4040:4040" 
