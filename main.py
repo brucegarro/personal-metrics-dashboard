@@ -1,17 +1,14 @@
 from typing import Optional
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi.responses import RedirectResponse
 
-from metrics.oura import OuraMetrics
+from metrics.oura_metrics import OuraMetrics, get_access_token
 
 
 app = FastAPI(title="Personal Metrics Dashboard")
+USERID = "brucegarro"
 
-class Metric(BaseModel):
-    name: str
-    value: float
-    unit: str
 
 @app.get("/")
 def read_root():
@@ -31,22 +28,30 @@ async def handle_callback(
         return {"message": f"Error during callback: {error}"}
     
     oura_metrics = OuraMetrics()
-    access_token = oura_metrics.handle_callback(code)
+    access_token = await oura_metrics.handle_callback(code)
     
-    return {
-        "access_token": access_token,
-        "state": state,
-        "message": "Callback handled successfully"
-    }
+    # return {
+    #     "access_token": access_token,
+    #     "state": state,
+    #     "message": "Callback handled successfully"
+    # }
+
+    return RedirectResponse(url="/health")
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     oura_metrics = OuraMetrics()
-    url = oura_metrics.get_oura_auth_url()
+    access_token = await get_access_token(USERID)
+    if not access_token:
+        url = oura_metrics.get_oura_auth_url()
+        return {
+            "url": url,
+            "status": "healthy"
+        }
     
     return {
-        "url": url,
+        "access_token": access_token,
         "status": "healthy"
     }
 
@@ -58,12 +63,4 @@ def get_metric(metric_id: int):
         "name": "Sample Metric",
         "value": 42.0,
         "unit": "units"
-    }
-
-@app.post("/metric/")
-def create_metric(metric: Metric):
-    # Placeholder for creating a new metric
-    return {
-        "message": "Metric created successfully",
-        "metric": metric
     }
