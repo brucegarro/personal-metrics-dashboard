@@ -26,7 +26,7 @@ async def health_check():
             "status": "healthy"
         }
     
-    oura_metrics.get_info(access_token["access_token"], access_token.get("refresh_token", ""))
+    oura_metrics.pull_data(access_token["access_token"])
 
     return {
         "access_token": access_token,
@@ -47,7 +47,7 @@ async def handle_callback(
         return {"message": f"Error during callback: {error}"}
     
     oura_metrics = OuraMetrics()
-    access_token = await oura_metrics.handle_callback(code)
+    access_token = await oura_metrics.get_and_cache_access_token(code)
     
     # return {
     #     "access_token": access_token,
@@ -56,30 +56,3 @@ async def handle_callback(
     # }
 
     return RedirectResponse(url="/health")
-
-
-@app.get("/health")
-async def health_check():
-    oura_metrics = OuraMetrics()
-    access_token = await get_access_token(USERID)
-    if not access_token:
-        url = oura_metrics.get_oura_auth_url()
-        return {
-            "url": url,
-            "status": "healthy"
-        }
-    
-    return {
-        "access_token": access_token,
-        "status": "healthy"
-    }
-
-@app.get("/metric/{metric_id}")
-def get_metric(metric_id: int):
-    # Placeholder for fetching a metric by ID
-    return {
-        "metric_id": metric_id,
-        "name": "Sample Metric",
-        "value": 42.0,
-        "unit": "units"
-    }
