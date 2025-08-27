@@ -8,7 +8,8 @@ services:
             dockerfile: Dockerfile
         container_name: fastapi
         ports:
-            - "8000:8000"
+            - "8000:8000" # uvicorn
+            - "5678:5678" # debugpy
         environment:
             - PYTHONDONTWRITEBYTECODE=1
             - PYTHONUNBUFFERED=1
@@ -19,7 +20,14 @@ services:
             - OURA_REDIRECT_URI=https://${NGROK_DOMAIN}/oura_callback                                                               
         volumes:
             - .:/app
-        command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+        command: [
+            "python", "-m", "debugpy",
+            "--listen", "0.0.0.0:5678",
+            # "--wait-for-client",
+            # "--configure-subProcess", "True",
+            "-m", "uvicorn", "main:app",
+            "--host", "0.0.0.0", "--port", "8000", "--reload"
+        ]
     ngrok:
         image: ngrok/ngrok:latest
         container_name: ngrok

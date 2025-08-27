@@ -1,0 +1,33 @@
+#This can be run like this:
+#   docker compose -f compose.prod.yaml up --build
+
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-prod
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - PIP_NO_CACHE_DIR=1
+      # Oura OAuth config
+      - OURA_CLIENT_ID=${OURA_CLIENT_ID}
+      - OURA_CLIENT_SECRET=${OURA_CLIENT_SECRET}
+      - OURA_REDIRECT_URI=https://${NGROK_DOMAIN}/oura_callback 
+    restart: unless-stopped
+    command: [
+        "uvicorn", "main:app",
+        "--host", "0.0.0.0", "--port", "8000", "--reload"
+    ]
+  redis:
+    image: "redis:alpine"
+    container_name: redis
+    depends_on:
+    - app
+    ports:
+    - "6379:6379"

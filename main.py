@@ -5,14 +5,33 @@ from fastapi.responses import RedirectResponse
 
 from metrics.oura_metrics import OuraMetrics, get_access_token
 
+USERID = "brucegarro"
+
 
 app = FastAPI(title="Personal Metrics Dashboard")
-USERID = "brucegarro"
 
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Personal Metrics Dashboard"}
+
+@app.get("/health")
+async def health_check():
+    oura_metrics = OuraMetrics()
+    access_token = await get_access_token(USERID)
+    if not access_token:
+        url = oura_metrics.get_oura_auth_url()
+        return {
+            "url": url,
+            "status": "healthy"
+        }
+    
+    oura_metrics.get_info(access_token["access_token"], access_token.get("refresh_token", ""))
+
+    return {
+        "access_token": access_token,
+        "status": "healthy"
+    }
 
 @app.get("/oura_callback")
 async def handle_callback(
