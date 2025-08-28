@@ -21,7 +21,7 @@ _redis = Redis(host="redis", port=6379, encoding="utf-8", decode_responses=True)
 def _key(user_id: str) -> str:
     return f"auth:token:{user_id}"
 
-async def cache_access_token(user_id: str, token: Dict[str, Any], ttl: int = REDIS_TTL_SECONDS) -> None:
+async def cache_access_token_from_cache(user_id: str, token: Dict[str, Any], ttl: int = REDIS_TTL_SECONDS) -> None:
     """
     token should include at least: access_token, expires_at (epoch seconds)
     """
@@ -30,7 +30,7 @@ async def cache_access_token(user_id: str, token: Dict[str, Any], ttl: int = RED
     # you can encrypt token here if desired (see notes below)
     await _redis.set(_key(user_id), json.dumps(token), ex=ttl)
 
-async def get_access_token(user_id: str) -> Optional[Dict[str, Any]]:
+async def get_access_token_from_cache(user_id: str) -> Optional[Dict[str, Any]]:
     raw = await _redis.get(_key(user_id))
     return json.loads(raw) if raw else None
 
@@ -53,8 +53,8 @@ class OuraMetrics:
         token_dict = self.auth_client.fetch_access_token(code=code)
         access_token = token_dict.get("access_token")
 
-
-        await cache_access_token("brucegarro", token_dict)
+        user_key = "brucegarro"  # Replace with actual user ID or username
+        await cache_access_token_from_cache(user_key, token_dict)
 
         return access_token
     
@@ -68,7 +68,7 @@ class OuraMetrics:
         }
 
         params = {
-            'start_date': (date.today() - timedelta(days=90)).isoformat(),
+            'start_date': (date.today() - timedelta(days=30)).isoformat(),
             'end_date': (date.today() - timedelta(days=0)).isoformat()
         }
         response = requests.request('GET', url, headers=headers, params=params)
@@ -82,6 +82,22 @@ class OuraMetrics:
             # 'daily_activity'
         ]:
             data[endpoint] = self.get_data_from_api(access_token, endpoint)
+        
+        pass
+        # TODO: Format data
+
+        # Recommended: Use PostgreSQL with SQLAlchemy ORM for FastAPI
+        # Example:
+        # from sqlalchemy.orm import Session
+        # from . import models, schemas
+        # db: Session = get_db()
+        # db_data = models.SleepData(**formatted_data)
+        # db.add(db_data)
+        # db.commit()
+
+        # TODO: store data in a database
+
+        return data
 
         # TODO: Format data
         

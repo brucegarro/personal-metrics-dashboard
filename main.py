@@ -1,9 +1,10 @@
+import time
 from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from metrics.oura_metrics import OuraMetrics, get_access_token
+from metrics.oura_metrics import OuraMetrics, get_access_token_from_cache
 
 USERID = "brucegarro"
 
@@ -18,8 +19,10 @@ def read_root():
 @app.get("/health")
 async def health_check():
     oura_metrics = OuraMetrics()
-    access_token = await get_access_token(USERID)
-    if not access_token:
+    access_token = await get_access_token_from_cache(USERID)
+    is_token_invalid = (access_token is None) or ( int(time.time()) > access_token.get("expires_at", 0) )
+
+    if is_token_invalid:
         url = oura_metrics.get_oura_auth_url()
         return {
             "url": url,
