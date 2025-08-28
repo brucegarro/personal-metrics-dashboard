@@ -68,7 +68,7 @@ class OuraMetrics:
         }
 
         params = {
-            'start_date': (date.today() - timedelta(days=30)).isoformat(),
+            'start_date': (date.today() - timedelta(days=90)).isoformat(),
             'end_date': (date.today() - timedelta(days=0)).isoformat()
         }
         response = requests.request('GET', url, headers=headers, params=params)
