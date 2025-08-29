@@ -6,3 +6,6 @@ redis==6.4.0
 ipython==8.18.1
 debugpy==1.8.16
 sqlalchemy==2.0.43
+boto3==1.40
+polars==1.32
+pyarrow==21.0.0

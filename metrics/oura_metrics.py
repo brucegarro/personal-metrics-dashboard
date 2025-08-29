@@ -8,6 +8,8 @@ from typing import Any, Dict, Optional
 from oura import OuraOAuth2Client
 from redis.asyncio import Redis
 
+from s3io import write_jsonl_gz
+
 
 OURA_CLIENT_ID = os.environ["OURA_CLIENT_ID"]
 OURA_CLIENT_SECRET = os.environ["OURA_CLIENT_SECRET"]
@@ -76,14 +78,26 @@ class OuraMetrics:
     
     def pull_data(self, access_token: str) -> Dict[str, Any]:
         data = {}
-        for endpoint in [
+        endpoints = [
             'daily_sleep',
             'daily_readiness',
             # 'daily_activity'
-        ]:
+        ]
+
+        # Get data from Oura
+        for endpoint in endpoints:
             data[endpoint] = self.get_data_from_api(access_token, endpoint)
-        
-        pass
+
+        # Write raw data to S3 buckets
+        for endpoint in endpoints:
+            write_jsonl_gz(
+                records=data.get("daily_sleep", []),
+                vendor="oura",
+                api="v2",
+                endpoint=endpoint,
+                schema="v1"
+            )
+
         # TODO: Format data
 
         # Recommended: Use PostgreSQL with SQLAlchemy ORM for FastAPI
