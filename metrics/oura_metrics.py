@@ -3,7 +3,7 @@ import json
 import time
 import requests
 from datetime import date, timedelta
-from typing import Any, Dict, Optional 
+from typing import Any, Dict, Tuple, Optional
 
 from oura import OuraOAuth2Client
 from redis.asyncio import Redis
@@ -77,17 +77,15 @@ class OuraMetrics:
         response = requests.request('GET', url, headers=headers, params=params)
         return response.json()["data"]
     
-    def pull_data(self, access_token: str, start_date: date, end_date: date) -> Dict[str, Any]:
-        data = {}
+    def pull_data(self, access_token: str, start_date: date, end_date: date) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        api_data = {}
         endpoints = [
             'daily_sleep',
             'daily_readiness',
-            # 'daily_activity'
         ]
 
-
         for endpoint in endpoints:
-            seen_events = { r._mapping['date'] for r in get_seen_events(
+            seen_events = { event.date for event in get_seen_events(
                 user_id="brucegarro",
                 endpoint=endpoint,
                 start_date=start_date,
@@ -99,7 +97,7 @@ class OuraMetrics:
 
 
             if unseen_dates:
-                data[endpoint] = self.get_data_from_api(
+                api_data[endpoint] = self.get_data_from_api(
                     access_token,
                     endpoint,
                     min(unseen_dates),
@@ -108,32 +106,12 @@ class OuraMetrics:
 
         # Write raw data to S3 buckets
         for endpoint in endpoints:
-            write_jsonl_gz(
-                records=data.get("daily_sleep", []),
+            persisted_data = write_jsonl_gz(
+                records=api_data.get(endpoint, []),
                 vendor="oura",
                 api="v2",
                 endpoint=endpoint,
                 schema="v1"
             )
 
-        # TODO: Format data
-
-        # Recommended: Use PostgreSQL with SQLAlchemy ORM for FastAPI
-        # Example:
-        # from sqlalchemy.orm import Session
-        # from . import models, schemas
-        # db: Session = get_db()
-        # db_data = models.SleepData(**formatted_data)
-        # db.add(db_data)
-        # db.commit()
-
-        # TODO: store data in a database
-
-        return data
-
-        # TODO: Format data
-        
-        # TODO: store data in a database
-
-
-        return data
+        return api_data, persisted_data
