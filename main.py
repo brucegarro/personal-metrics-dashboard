@@ -1,5 +1,6 @@
 import time
 from typing import Optional
+from datetime import date, timedelta
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
@@ -20,7 +21,7 @@ def read_root():
 async def health_check():
     oura_metrics = OuraMetrics()
     access_token = await get_access_token_from_cache(USERID)
-    is_expired = int(time.time()) > access_token.get("expires_at", 0)
+    is_expired = access_token and int(time.time()) > access_token.get("expires_at", 0)
 
     if access_token is None or is_expired:
         url = oura_metrics.get_oura_auth_url()
@@ -29,7 +30,15 @@ async def health_check():
             "status": "healthy"
         }
     
-    oura_metrics.pull_data(access_token["access_token"])
+    # Get data from Oura
+    default_start_date = date.today() - timedelta(days=90)
+    default_end_date = date.today()
+
+    oura_metrics.pull_data(
+        access_token["access_token"],
+        start_date=default_start_date,
+        end_date=default_end_date,
+    )
 
     return {
         "access_token": access_token,

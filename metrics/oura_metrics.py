@@ -7,8 +7,9 @@ from typing import Any, Dict, Optional
 
 from oura import OuraOAuth2Client
 from redis.asyncio import Redis
-
 from s3io import write_jsonl_gz
+
+from db import get_seen_events
 
 
 OURA_CLIENT_ID = os.environ["OURA_CLIENT_ID"]
@@ -60,7 +61,7 @@ class OuraMetrics:
 
         return access_token
     
-    def get_data_from_api(self, access_token: str, endpoint: str) -> Dict[str, Any]:
+    def get_data_from_api(self, access_token: str, endpoint: str, start_date: date, end_date: date) -> Dict[str, Any]:
         """
         endpoint: can be one of: 'daily_sleep', 'daily_readiness", "daily_activity", etc.
         """
@@ -70,13 +71,13 @@ class OuraMetrics:
         }
 
         params = {
-            'start_date': (date.today() - timedelta(days=90)).isoformat(),
-            'end_date': (date.today() - timedelta(days=0)).isoformat()
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
         }
         response = requests.request('GET', url, headers=headers, params=params)
         return response.json()["data"]
     
-    def pull_data(self, access_token: str) -> Dict[str, Any]:
+    def pull_data(self, access_token: str, start_date: date, end_date: date) -> Dict[str, Any]:
         data = {}
         endpoints = [
             'daily_sleep',
@@ -84,9 +85,26 @@ class OuraMetrics:
             # 'daily_activity'
         ]
 
-        # Get data from Oura
+
         for endpoint in endpoints:
-            data[endpoint] = self.get_data_from_api(access_token, endpoint)
+            seen_events = { r._mapping['date'] for r in get_seen_events(
+                user_id="brucegarro",
+                endpoint=endpoint,
+                start_date=start_date,
+                end_date=end_date,
+            ) }
+            unseen_dates = {
+                start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)
+            } - seen_events
+
+
+            if unseen_dates:
+                data[endpoint] = self.get_data_from_api(
+                    access_token,
+                    endpoint,
+                    min(unseen_dates),
+                    max(unseen_dates)
+                )
 
         # Write raw data to S3 buckets
         for endpoint in endpoints:

@@ -10,4 +10,4 @@ boto3==1.40
 polars==1.32
 pyarrow==21.0.0
 alembic==1.13
-psycopg2-binary==2.9
+psycopg2-binary==2.9.10
