@@ -4,6 +4,7 @@ from datetime import date as Date
 from sqlalchemy import create_engine, text
 
 ENGINE = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 @contextmanager
 def _conn():

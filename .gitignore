@@ -88,3 +88,4 @@ local_settings.py
 
 minio-data/
 .mc/
+.bak/
