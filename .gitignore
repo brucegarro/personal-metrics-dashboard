@@ -85,3 +85,6 @@ local_settings.py
 # IDEs
 .idea/
 *.iml
+
+minio-data/
+.mc/

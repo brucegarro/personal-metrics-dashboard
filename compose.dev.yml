@@ -29,6 +29,21 @@ services:
             "-m", "uvicorn", "main:app",
             "--host", "0.0.0.0", "--port", "8000", "--reload"
         ]
+        depends_on: [db]
+    db:
+      image: postgres:16
+      environment:
+        POSTGRES_DB: appdb
+        POSTGRES_USER: appuser
+        POSTGRES_PASSWORD: appsecret
+      ports: ["5432:5432"]
+      volumes:
+        - pgdata:/var/lib/postgresql/data
+    migrate:
+      build: .
+      env_file: .env.local
+      depends_on: [db]
+      command: ["alembic", "upgrade", "head"]
     ngrok:
         image: ngrok/ngrok:latest
         container_name: ngrok
@@ -69,3 +84,5 @@ services:
         mc mb -p local/analytics || true &&
         mc version enable local/analytics || true
         "
+volumes:
+  pgdata: {}
