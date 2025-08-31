@@ -22,12 +22,17 @@ def upgrade() -> None:
     op.create_table(
         "seen_events",
         sa.Column("user_id", sa.Text(), nullable=False),
-        sa.Column("day", sa.Date(), nullable=False),
+        sa.Column("date", sa.Date(), nullable=False),
         sa.Column("endpoint", sa.Text(), nullable=False),
-        sa.Column("first_seen", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.PrimaryKeyConstraint("user_id", "day", "endpoint", name="event_id"),
+        sa.Column(
+            "first_seen",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
+        # Composite PK named "event_id"
+        sa.PrimaryKeyConstraint("user_id", "date", "endpoint", name="event_id"),
     )
-
 
 def downgrade() -> None:
     op.drop_table("seen_events")
