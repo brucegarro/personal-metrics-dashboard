@@ -21,16 +21,13 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "seen_events",
-        sa.Column("event_id", sa.Text(), primary_key=True),
         sa.Column("user_id", sa.Text(), nullable=False),
         sa.Column("day", sa.Date(), nullable=False),
         sa.Column("endpoint", sa.Text(), nullable=False),
         sa.Column("first_seen", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint("user_id", "day", "endpoint", name="event_id"),
     )
-    # helpful query index (optional but recommended)
-    op.create_index("ix_seen_user_day_endpoint", "seen_events", ["user_id", "day", "endpoint"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_seen_user_day_endpoint", table_name="seen_events")
     op.drop_table("seen_events")
