@@ -10,6 +10,8 @@ from redis.asyncio import Redis
 from s3io import write_jsonl_gz
 
 from db import get_seen_events, create_seen_events_bulk
+from queueing import get_queue
+from jobs import run_etl_job
 
 
 OURA_CLIENT_ID = os.environ["OURA_CLIENT_ID"]
@@ -77,16 +79,18 @@ class OuraMetrics:
         response = requests.request('GET', url, headers=headers, params=params)
         return response.json()["data"]
     
-    def pull_data(self, access_token: str, start_date: date, end_date: date) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def pull_data(self, access_token: str, start_date: date, end_date: date, user_id="brucegarro") -> Tuple[Dict[str, Any], Dict[str, Any]]:
         api_data = {}
         endpoints = [
             'daily_sleep',
             'daily_readiness',
         ]
-
+        
+        persisted_data = {}
+        enqueued_jobs = {}
         for endpoint in endpoints:
             seen_events = { event.date for event in get_seen_events(
-                user_id="brucegarro",
+                user_id=user_id,
                 endpoint=endpoint,
                 start_date=start_date,
                 end_date=end_date,
@@ -98,32 +102,38 @@ class OuraMetrics:
 
             if unseen_dates:
                 api_data[endpoint] = [
-                r for r in
-                self.get_data_from_api(
-                    access_token,
-                    endpoint,
-                    min(unseen_dates),
-                    max(unseen_dates)
-                ) if datetime.fromisoformat(r["timestamp"]).date() in unseen_dates
-            ]
+                    r for r in
+                    self.get_data_from_api(
+                        access_token,
+                        endpoint,
+                        min(unseen_dates),
+                        max(unseen_dates)
+                    ) if datetime.fromisoformat(r["timestamp"]).date() in unseen_dates
+                ]
 
-            # Write raw data to S3 buckets
-            persisted_data = write_jsonl_gz(
-                records=api_data.get(endpoint, []),
-                vendor="oura",
-                api="v2",
-                endpoint=endpoint,
-                schema="v1"
-            )
+            if api_data[endpoint]:
+                # Write raw data to S3 buckets
+                persisted_data[endpoint] = write_jsonl_gz(
+                    records=api_data.get(endpoint, []),
+                    vendor="oura",
+                    api="v2",
+                    endpoint=endpoint,
+                    schema="v1"
+                )
 
-            # Mark events as seen in the DB
-            create_seen_events_bulk(
-                user_id="brucegarro",
-                endpoint=endpoint,
-                dates={
-                    datetime.fromisoformat(item["timestamp"]).date()
-                    for item in api_data.get(endpoint, [])
-                }
-            )
+                # Mark events as seen in the DB
+                create_seen_events_bulk(
+                    user_id=user_id,
+                    endpoint=endpoint,
+                    dates={
+                        datetime.fromisoformat(item["timestamp"]).date()
+                        for item in api_data.get(endpoint, [])
+                    }
+                )
 
-        return api_data, persisted_data
+                # Enqueue ETL job for storing to the DB
+                q = get_queue("etl")
+                job = q.enqueue(run_etl_job, endpoint, date.today().isoformat(), user_id)
+                enqueued_jobs[endpoint] = job.id
+
+        return api_data, persisted_data, enqueued_jobs

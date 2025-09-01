@@ -1,6 +1,7 @@
 import os, io, gzip, json, hashlib
 from datetime import datetime, timezone
 import boto3
+import polars as pl
 
 BUCKET = os.getenv("S3_BUCKET")
 ENV = os.getenv("ENV", "dev")
@@ -62,3 +63,45 @@ def write_jsonl_gz(records, vendor, api, endpoint, schema="v1"):
         ContentType="application/json",
     )
     return {"data_key": data_key, "meta_key": meta_key}
+
+def _list_ndjson_gz_keys(vendor: str, api: str, endpoint: str, date_str: str) -> list[str]:
+    """List all .jsonl.gz parts for a given day under your raw layout."""
+    prefix = (
+        f"thirdparty/{vendor}/{api}/{ENV}/"
+        f"zone=raw/endpoint={endpoint}/schema=v1/dt={date_str}/"
+    )
+    keys: list[str] = []
+    token: str | None = None
+    while True:
+        if token is None:
+            resp = _s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
+        else:
+            resp = _s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, ContinuationToken=token)
+        for obj in resp.get("Contents", []):
+            k = obj["Key"]
+            # keep only the data parts
+            if k.endswith(".jsonl.gz") and "/part=" in k:
+                keys.append(k)
+        if resp.get("IsTruncated"):
+            token = resp.get("NextContinuationToken")
+        else:
+            break
+    return keys
+
+def _load_ndjson_gz_as_polars(keys: list[str]) -> pl.DataFrame:
+    """Fetch & decompress all keys, parse NDJSON lines, return a Polars DF."""
+    rows: list[dict] = []
+    for key in keys:
+        obj = _s3.get_object(Bucket=BUCKET, Key=key)
+        raw = obj["Body"].read()
+        # try gzip; fall back to plain bytes just in case
+        try:
+            data = gzip.decompress(raw)
+        except OSError:
+            data = raw
+        for line in data.splitlines():
+            if line:
+                rows.append(json.loads(line))
+    if not rows:
+        return pl.DataFrame()
+    return pl.from_dicts(rows)

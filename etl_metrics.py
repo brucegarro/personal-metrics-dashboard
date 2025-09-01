@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import select
 from db import SessionLocal, ENGINE
 from models import Metric
+from s3io import _list_ndjson_gz_keys, _load_ndjson_gz_as_polars
 
 BUCKET = os.getenv("S3_BUCKET")
 ENV = os.getenv("S3_ENV", "dev")
@@ -48,15 +49,30 @@ def _etl_daily_oura_day(
     endpoint: str,
     date_str: str,
     user_id: str,
-    select_exprs: list[pl.Expr],
+    col_map: dict[str, str] | None = None,
+    struct_map: dict[str, str] | None = None,
+    struct_col: str = "contributors",
     vendor: str = "oura",
     api: str = "v2",
 ) -> int:
-    scan = pl.scan_ndjson(
-        _raw_glob(vendor, api, endpoint, date_str),
-        storage_options=_s3_opts_json(),
-    )
-    df = scan.select("day", *select_exprs).collect(streaming=True)
+    col_map = col_map or {}
+    struct_map = struct_map or {}
+
+    keys = _list_ndjson_gz_keys(vendor, api, endpoint, date_str)
+    if not keys:
+        return 0
+
+    df = _load_ndjson_gz_as_polars(keys)
+    if df.height == 0:
+        return 0
+
+    select_list = [pl.col("day")]
+    for src, dst in col_map.items():
+        select_list.append(pl.col(src).alias(dst))
+    for sfield, dst in struct_map.items():
+        select_list.append(pl.col(struct_col).struct.field(sfield).alias(dst))
+
+    df = df.select(select_list)
     if df.height == 0:
         return 0
 
@@ -70,16 +86,15 @@ def _etl_daily_oura_day(
           .sort(["day", "name"])
     )
 
-    payload = [
-        {
+    payload = []
+    for r in long_df.iter_rows(named=True):
+        payload.append({
             "name": r["name"],
             "user_id": user_id,
-            "date": r["day"].item(),
+            "date": r["day"],
             "endpoint": endpoint,
             "value": float(r["value"]),
-        }
-        for r in long_df.iter_rows(named=True)
-    ]
+        })
     return _insert_metrics_ignore_conflicts(payload)
 
 
@@ -88,16 +103,16 @@ def etl_daily_sleep_day(date_str: str, user_id: str) -> int:
         endpoint="daily_sleep",
         date_str=date_str,
         user_id=user_id,
-        select_exprs=[
-            pl.col("score").alias("sleep_score"),
-            pl.col("contributors").struct.field("deep_sleep").alias("deep_sleep"),
-            pl.col("contributors").struct.field("efficiency").alias("efficiency"),
-            pl.col("contributors").struct.field("latency").alias("latency"),
-            pl.col("contributors").struct.field("rem_sleep").alias("rem_sleep"),
-            pl.col("contributors").struct.field("restfulness").alias("restfulness"),
-            pl.col("contributors").struct.field("timing").alias("timing"),
-            pl.col("contributors").struct.field("total_sleep").alias("total_sleep"),
-        ],
+        col_map={"score": "sleep_score"},
+        struct_map={
+            "deep_sleep": "deep_sleep",
+            "efficiency": "efficiency",
+            "latency": "latency",
+            "rem_sleep": "rem_sleep",
+            "restfulness": "restfulness",
+            "timing": "timing",
+            "total_sleep": "total_sleep",
+        },
     )
 
 def etl_daily_readiness_day(date_str: str, user_id: str) -> int:
@@ -105,9 +120,7 @@ def etl_daily_readiness_day(date_str: str, user_id: str) -> int:
         endpoint="daily_readiness",
         date_str=date_str,
         user_id=user_id,
-        select_exprs=[
-            pl.col("score").alias("readiness_score"),
-        ],
+        col_map={"score": "readiness_score"},
     )
 
 

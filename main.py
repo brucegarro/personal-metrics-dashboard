@@ -34,7 +34,7 @@ async def health_check():
     default_start_date = date.today() - timedelta(days=90)
     default_end_date = date.today()
 
-    api_data, persisted_data = oura_metrics.pull_data(
+    api_data, persisted_data, enqueued_jobs = oura_metrics.pull_data(
         access_token["access_token"],
         start_date=default_start_date,
         end_date=default_end_date,
@@ -44,6 +44,7 @@ async def health_check():
         "access_token": access_token,
         "api_data": api_data,
         "persisted_data": persisted_data,
+        "enqueued_jobs": enqueued_jobs,
         "status": "healthy"
     }
 
