@@ -97,12 +97,15 @@ class OuraMetrics:
 
 
             if unseen_dates:
-                api_data[endpoint] = self.get_data_from_api(
+                api_data[endpoint] = [
+                r for r in
+                self.get_data_from_api(
                     access_token,
                     endpoint,
                     min(unseen_dates),
                     max(unseen_dates)
-                )
+                ) if datetime.fromisoformat(r["timestamp"]).date() in unseen_dates
+            ]
 
             # Write raw data to S3 buckets
             persisted_data = write_jsonl_gz(
