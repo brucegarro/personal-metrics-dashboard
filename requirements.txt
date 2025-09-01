@@ -7,7 +7,7 @@ ipython==8.18.1
 debugpy==1.8.16
 sqlalchemy==2.0.43
 boto3==1.40
-polars==1.32
+polars==1.33.0
 pyarrow==21.0.0
 alembic==1.13
 psycopg2-binary==2.9.10
