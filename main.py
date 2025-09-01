@@ -40,8 +40,15 @@ async def health_check():
         end_date=default_end_date,
     )
 
+    metrics_view = oura_metrics.get_metrics_pivot(
+        USERID,
+        default_start_date,
+        default_end_date,
+    )
+
     return {
         "access_token": access_token,
+        "metrics_view": metrics_view,
         "api_data": api_data,
         "persisted_data": persisted_data,
         "enqueued_jobs": enqueued_jobs,

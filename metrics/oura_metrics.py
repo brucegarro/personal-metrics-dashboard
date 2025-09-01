@@ -9,7 +9,7 @@ from oura import OuraOAuth2Client
 from redis.asyncio import Redis
 from s3io import write_jsonl_gz
 
-from db import get_seen_events, create_seen_events_bulk
+from db import get_seen_events, create_seen_events_bulk, get_metrics
 from queueing import get_queue
 from jobs import run_etl_job
 
@@ -79,6 +79,18 @@ class OuraMetrics:
         response = requests.request('GET', url, headers=headers, params=params)
         return response.json()["data"]
     
+    def get_metrics_pivot(self, user_id: str, start_date: date, end_date: date) -> list[dict]:
+        metrics = get_metrics(user_id, start_date, end_date)
+        pivoted = {}
+        for metric in metrics:
+            day_str = metric.date.isoformat()
+            if day_str not in pivoted:
+                pivoted[day_str] = {"date": day_str}
+            pivoted[day_str][metric.name] = metric.value
+        pivoted_list = list(pivoted.values())
+        pivoted_list.sort(key=lambda x: datetime.strptime(x["date"], "%Y-%m-%d"))
+        return pivoted_list
+
     def pull_data(self, access_token: str, start_date: date, end_date: date, user_id="brucegarro") -> Tuple[Dict[str, Any], Dict[str, Any]]:
         api_data = {}
         endpoints = [

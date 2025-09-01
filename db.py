@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, text, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
-from models import SeenEvent
+from models import Metric, SeenEvent
 
 ENGINE = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True, future=True)
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False, future=True)
@@ -15,6 +15,21 @@ SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False
 def _conn():
     with ENGINE.begin() as conn:
         yield conn
+
+
+
+def get_metrics(user_id: str, start_date: Date, end_date: Date) -> list[dict]:
+    with SessionLocal() as s:
+        stmt = (
+            select(Metric.date, Metric.endpoint, Metric.name, Metric.value)
+            .where(
+                Metric.user_id == user_id,
+                Metric.date >= start_date,
+                Metric.date <= end_date,
+            )
+            .order_by(Metric.date, Metric.endpoint, Metric.name)
+        )
+        return s.execute(stmt).all()
 
 
 def get_seen_events(user_id: str, endpoint: str, start_date: Date, end_date: Date) -> list[SeenEvent]:
