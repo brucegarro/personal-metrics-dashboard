@@ -44,20 +44,19 @@ def _ensure_date(df: pl.DataFrame, col: str = "day") -> pl.DataFrame:
         return df.with_columns(pl.col(col).str.strptime(pl.Date, strict=False))
     return df
 
-def etl_daily_readiness_day(date_str: str, user_id: str) -> int:
-    # Oura v2 daily readiness: typically one row per 'day'
-    scan = pl.scan_ndjson(_raw_glob("oura", "v2", "daily_readiness", date_str), storage_options=_s3_opts_json())
-    df = scan.select(
-        "day",
-        pl.col("score"),
-        pl.col("contributors").struct.field("deep_sleep").alias("deep_sleep"),
-        pl.col("contributors").struct.field("efficiency").alias("efficiency"),
-        pl.col("contributors").struct.field("latency").alias("latency"),
-        pl.col("contributors").struct.field("rem_sleep").alias("rem_sleep"),
-        pl.col("contributors").struct.field("restfulness").alias("restfulness"),
-        pl.col("contributors").struct.field("timing").alias("timing"),
-        pl.col("contributors").struct.field("total_sleep").alias("total_sleep"),
-    ).collect()
+def _etl_daily_oura_day(
+    endpoint: str,
+    date_str: str,
+    user_id: str,
+    select_exprs: list[pl.Expr],
+    vendor: str = "oura",
+    api: str = "v2",
+) -> int:
+    scan = pl.scan_ndjson(
+        _raw_glob(vendor, api, endpoint, date_str),
+        storage_options=_s3_opts_json(),
+    )
+    df = scan.select("day", *select_exprs).collect(streaming=True)
     if df.height == 0:
         return 0
 
@@ -65,27 +64,51 @@ def etl_daily_readiness_day(date_str: str, user_id: str) -> int:
     metric_cols = [c for c in df.columns if c != "day"]
 
     long_df = (
-        df.unpivot(
-            index="day",
-            on=metric_cols,
-            variable_name="name",
-            value_name="value",
-        )
-        .drop_nulls("value")
-        .with_columns(pl.col("value").cast(pl.Float64))
-        .sort(["day", "name"])   # sort by date, then metric name
+        df.unpivot(index="day", on=metric_cols, variable_name="name", value_name="value")
+          .drop_nulls("value")
+          .with_columns(pl.col("value").cast(pl.Float64))
+          .sort(["day", "name"])
     )
+
     payload = [
         {
             "name": r["name"],
             "user_id": user_id,
             "date": r["day"].item(),
-            "endpoint": "daily_readiness",
+            "endpoint": endpoint,
             "value": float(r["value"]),
         }
         for r in long_df.iter_rows(named=True)
     ]
     return _insert_metrics_ignore_conflicts(payload)
+
+
+def etl_daily_sleep_day(date_str: str, user_id: str) -> int:
+    return _etl_daily_oura_day(
+        endpoint="daily_sleep",
+        date_str=date_str,
+        user_id=user_id,
+        select_exprs=[
+            pl.col("score").alias("sleep_score"),
+            pl.col("contributors").struct.field("deep_sleep").alias("deep_sleep"),
+            pl.col("contributors").struct.field("efficiency").alias("efficiency"),
+            pl.col("contributors").struct.field("latency").alias("latency"),
+            pl.col("contributors").struct.field("rem_sleep").alias("rem_sleep"),
+            pl.col("contributors").struct.field("restfulness").alias("restfulness"),
+            pl.col("contributors").struct.field("timing").alias("timing"),
+            pl.col("contributors").struct.field("total_sleep").alias("total_sleep"),
+        ],
+    )
+
+def etl_daily_readiness_day(date_str: str, user_id: str) -> int:
+    return _etl_daily_oura_day(
+        endpoint="daily_readiness",
+        date_str=date_str,
+        user_id=user_id,
+        select_exprs=[
+            pl.col("score").alias("readiness_score"),
+        ],
+    )
 
 
 def _insert_metrics_ignore_conflicts(records: list[dict]) -> int:
