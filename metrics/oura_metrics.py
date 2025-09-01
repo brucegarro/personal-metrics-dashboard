@@ -2,14 +2,14 @@ import os
 import json
 import time
 import requests
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Tuple, Optional
 
 from oura import OuraOAuth2Client
 from redis.asyncio import Redis
 from s3io import write_jsonl_gz
 
-from db import get_seen_events
+from db import get_seen_events, create_seen_events_bulk
 
 
 OURA_CLIENT_ID = os.environ["OURA_CLIENT_ID"]
@@ -104,14 +104,23 @@ class OuraMetrics:
                     max(unseen_dates)
                 )
 
-        # Write raw data to S3 buckets
-        for endpoint in endpoints:
+            # Write raw data to S3 buckets
             persisted_data = write_jsonl_gz(
                 records=api_data.get(endpoint, []),
                 vendor="oura",
                 api="v2",
                 endpoint=endpoint,
                 schema="v1"
+            )
+
+            # Mark events as seen in the DB
+            create_seen_events_bulk(
+                user_id="brucegarro",
+                endpoint=endpoint,
+                dates={
+                    datetime.fromisoformat(item["timestamp"]).date()
+                    for item in api_data.get(endpoint, [])
+                }
             )
 
         return api_data, persisted_data

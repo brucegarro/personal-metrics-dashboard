@@ -1,7 +1,9 @@
 import os
 from contextlib import contextmanager
 from datetime import date as Date
+from typing import Sequence, Set
 from sqlalchemy import create_engine, text, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
 from models import SeenEvent
@@ -13,12 +15,6 @@ SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False
 def _conn():
     with ENGINE.begin() as conn:
         yield conn
-
-def mark_event_seen(user_id: str, date: Date, endpoint: str) -> None:
-    pass
-
-def mark_event_seen_bulk(rows: list[tuple[str, Date, str]]) -> None:
-    pass
 
 
 def get_seen_events(user_id: str, endpoint: str, start_date: Date, end_date: Date) -> list[SeenEvent]:
@@ -33,3 +29,38 @@ def get_seen_events(user_id: str, endpoint: str, start_date: Date, end_date: Dat
             )
         )
         return s.scalars(stmt).all()
+
+
+def create_seen_events_bulk(
+    user_id: str,
+    endpoint: str,
+    dates: Set[Date],
+) -> Set[Date]:
+    """
+    Bulk-insert seen_events rows for (user_id, endpoint) on the given dates.
+    Uses ON CONFLICT DO NOTHING against the composite PK (user_id, date, endpoint).
+    Returns the set of dates that were newly inserted.
+    """
+    if not dates:
+        return set()
+
+    # de-dup input to avoid unnecessary conflicts
+    unique_dates = sorted(set(dates))
+
+    payload = [
+        {"user_id": user_id, "endpoint": endpoint, "date": d}
+        for d in unique_dates
+    ]
+
+    stmt = (
+        insert(SeenEvent)
+        .values(payload)
+        .on_conflict_do_nothing(index_elements=["user_id", "date", "endpoint"])
+        .returning(SeenEvent.date)  # returns only rows actually inserted
+    )
+
+    with SessionLocal() as s:
+        inserted_dates = {row[0] for row in s.execute(stmt)}
+        s.commit()
+
+    return inserted_dates

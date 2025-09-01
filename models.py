@@ -27,10 +27,10 @@ class Metric(Base):
     __tablename__ = "metric"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
     date: Mapped[object] = mapped_column(Date, nullable=False)
     endpoint: Mapped[str] = mapped_column(String, nullable=False)
-    name: Mapped[str] = mapped_column(String, nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
 
     __table_args__ = (
