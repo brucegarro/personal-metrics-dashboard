@@ -1,33 +1,123 @@
-#This can be run like this:
+ #This can be run like this:
 #   docker compose -f compose.prod.yaml up --build
 
 version: "3.9"
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: fastapi-prod
-    ports:
-      - "8000:8000"
-    environment:
-      - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONUNBUFFERED=1
-      - PIP_NO_CACHE_DIR=1
-      # Oura OAuth config
-      - OURA_CLIENT_ID=${OURA_CLIENT_ID}
-      - OURA_CLIENT_SECRET=${OURA_CLIENT_SECRET}
-      - OURA_REDIRECT_URI=https://${NGROK_DOMAIN}/oura_callback 
-    restart: unless-stopped
-    command: [
-        "uvicorn", "main:app",
-        "--host", "0.0.0.0", "--port", "8000", "--reload"
-    ]
-  redis:
-    image: "redis:alpine"
-    container_name: redis
-    depends_on:
-    - app
-    ports:
-    - "6379:6379"
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: fastapi-prod
+        ports:
+            - "8000:8000" # uvicorn
+        environment:
+          - PYTHONDONTWRITEBYTECODE=1
+          - PYTHONUNBUFFERED=1
+          - PIP_NO_CACHE_DIR=1
+          # Oura OAuth config
+          - OURA_CLIENT_ID=${OURA_CLIENT_ID}
+          - OURA_CLIENT_SECRET=${OURA_CLIENT_SECRET}
+          - OURA_REDIRECT_URI=https://${DOMAIN}/oura_callback
+          # AWS managed services
+          - DATABASE_URL=${DATABASE_URL}
+          - REDIS_URL=redis://redis:6379/0
+          - S3_BUCKET=${S3_BUCKET}
+          - S3_REGION=${S3_REGION}
+          # Use IAM role on EC2 instance for credentials
+          # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+          # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+          - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+          - WEB_THREADS=${WEB_THREADS:-4}
+          - WEB_TIMEOUT=${WEB_TIMEOUT:-60}
+        env_file: .env.local
+        restart: unless-stopped
+        command: [
+          "gunicorn",
+          "-k","uvicorn.workers.UvicornWorker",
+          "main:app",
+          "--bind","0.0.0.0:8000",
+          "--workers","${WEB_CONCURRENCY:-2}",
+          "--threads","${WEB_THREADS:-4}",
+          "--timeout","${WEB_TIMEOUT:-60}",
+          "--graceful-timeout","30"
+        ]
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_started
+            migrate:
+                condition: service_completed_successfully
+        healthcheck:
+            # if curl isn't in your image, swap for wget/netcat or a tiny python check
+            test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+            interval: 15s
+            timeout: 3s
+            retries: 5
+            start_period: 20s
+        user: "10001:10001"
+        read_only: true
+        tmpfs:
+          - /tmp
+    worker:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: fastapi-worker-prod
+        environment:
+          - DATABASE_URL=${DATABASE_URL}
+          - REDIS_URL=redis://redis:6379/0
+          - S3_BUCKET=${S3_BUCKET}
+          - S3_REGION=${S3_REGION}
+          - DEFAULT_USER_ID=${DEFAULT_USER_ID:-user}
+        
+        command: ["python","-m","rq","worker","-u","redis://redis:6379/0","etl"]
+        restart: unless-stopped
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_started
+            migrate:
+                condition: service_completed_successfully
+        healthcheck:
+            test: ["CMD-SHELL", "python - <<'PY'\nfrom redis import Redis\nimport sys\nr=Redis.from_url('redis://redis:6379/0')\nsys.exit(0 if r.ping() else 1)\nPY"]
+            interval: 30s
+            timeout: 5s
+            retries: 5
+            start_period: 20s
+        user: "10001:10001"
+        read_only: true
+        tmpfs:
+          - /tmp
+    db:
+        image: postgres:16
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        ports: ["5432:5432"]
+        volumes:
+          - /data/postgres:/var/lib/postgresql/data   # bind to your EBS mount
+        healthcheck:
+            test: ["CMD-SHELL","pg_isready -U appuser -d appdb"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
+        restart: unless-stopped
+    redis:
+        image: redis:7-alpine
+        container_name: redis
+        command: ["redis-server","--appendonly","yes"]  # basic durability
+        volumes:
+          - /data/redis:/data                           # optional EBS subdir
+        restart: unless-stopped
+    migrate:
+        build: .
+        environment:
+          - DATABASE_URL=${DATABASE_URL}
+        command: ["alembic","upgrade","head"]
+        depends_on:
+          db:
+            condition: service_healthy
