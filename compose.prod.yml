@@ -65,7 +65,7 @@ services:
           - S3_BUCKET=${S3_BUCKET}
           - S3_REGION=${S3_REGION}
           - DEFAULT_USER_ID=user
-        
+        env_file: .env.local
         command: ["python","-m","rq","worker","-u","redis://redis:6379/0","etl"]
         restart: unless-stopped
         depends_on:
