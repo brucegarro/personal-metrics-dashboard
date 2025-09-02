@@ -16,12 +16,8 @@ services:
           - PYTHONUNBUFFERED=1
           - PIP_NO_CACHE_DIR=1
           # Oura OAuth config
-          - OURA_REDIRECT_URI=https://${DOMAIN}/oura_callback
           # AWS managed services
           - REDIS_URL=redis://redis:6379/0
-          # Use IAM role on EC2 instance for credentials
-          # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-          # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
           - WEB_CONCURRENCY=2
           - WEB_THREADS=4
           - WEB_TIMEOUT=60
