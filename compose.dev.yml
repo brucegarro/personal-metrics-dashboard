@@ -19,7 +19,7 @@ services:
             # Oura OAuth config
             - OURA_CLIENT_ID=${OURA_CLIENT_ID}
             - OURA_CLIENT_SECRET=${OURA_CLIENT_SECRET}
-            - OURA_REDIRECT_URI=https://${NGROK_DOMAIN}/oura_callback
+            - OURA_REDIRECT_URI=https://${DOMAIN}/oura_callback
             - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
         env_file: .env.local
         volumes:
@@ -66,7 +66,7 @@ services:
         - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
         command:
         - "http"
-        - "--domain=${NGROK_DOMAIN}"
+        - "--domain=${DOMAIN}"
         - "app:8000"
         ports:
         - "4040:4040" 
