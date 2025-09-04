@@ -47,7 +47,6 @@ async def health_check():
     )
 
     return {
-        "access_token": access_token,
         "metrics_view": metrics_view,
         "api_data": api_data,
         "persisted_data": persisted_data,
