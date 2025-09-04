@@ -56,7 +56,7 @@ services:
         environment:
           - DEFAULT_USER_ID=appuser
         env_file: .env
-        command: ["python","-m","rq","worker","-u","${REDIS_URL}","etl"]
+        command: ["rq", "worker", "-u", "${REDIS_URL}", "etl"]
         restart: unless-stopped
         depends_on:
             db:
