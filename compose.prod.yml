@@ -10,7 +10,7 @@ services:
             dockerfile: Dockerfile
         container_name: fastapi-prod
         ports:
-            - "8000:8000" # uvicorn
+            - "80:8000" # uvicorn
         environment:
           - PYTHONDONTWRITEBYTECODE=1
           - PYTHONUNBUFFERED=1
