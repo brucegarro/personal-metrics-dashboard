@@ -10,7 +10,10 @@ services:
             dockerfile: Dockerfile
         container_name: fastapi-prod
         ports:
-            - "80:8000" # uvicorn
+          - "443:443"
+          - "80:80"
+        volumes:
+          - /etc/letsencrypt:/etc/letsencrypt:ro
         environment:
           - PYTHONDONTWRITEBYTECODE=1
           - PYTHONUNBUFFERED=1
@@ -21,14 +24,17 @@ services:
         env_file: .env
         restart: unless-stopped
         command: [
-          "gunicorn",
-          "-k","uvicorn.workers.UvicornWorker",
-          "main:app",
-          "--bind","0.0.0.0:8000",
-          "--workers","${WEB_CONCURRENCY}",
-          "--threads","${WEB_THREADS}",
-          "--timeout","${WEB_TIMEOUT}",
-          "--graceful-timeout","30"
+            "gunicorn",
+            "-k","uvicorn.workers.UvicornWorker",
+            "main:app",
+            "--bind","0.0.0.0:443",
+            "--bind","0.0.0.0:80",
+            "--workers","${WEB_CONCURRENCY}",
+            "--threads","${WEB_THREADS}",
+            "--timeout","${WEB_TIMEOUT}",
+            "--graceful-timeout","30",
+            "--certfile","/etc/letsencrypt/live/www.brucegarro.com/fullchain.pem",
+            "--keyfile","/etc/letsencrypt/live/www.brucegarro.com/privkey.pem"
         ]
         depends_on:
             db:
