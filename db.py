@@ -1,12 +1,12 @@
 import os
 from contextlib import contextmanager
 from datetime import date as Date
-from typing import Sequence, Set
+from typing import Sequence, Set, List, Tuple
 from sqlalchemy import create_engine, text, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
-from models import Metric, SeenEvent
+from models import Metric, SeenEvent, TaskEntry
 
 ENGINE = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True, future=True)
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False, future=True)
@@ -79,3 +79,97 @@ def create_seen_events_bulk(
         s.commit()
 
     return inserted_dates
+
+
+from models import TaskEntry, ms_to_datetime
+
+def task_entry_from_json(entry_dict: dict) -> TaskEntry:
+    """Parse TaskEntry JSON into a TaskEntry ORM object."""
+    props = {p["propertyName"]: p.get("value") for p in entry_dict["properties"]}
+
+    return TaskEntry(
+        task_id=props["taskID"].split("€€")[0],
+        global_identifier=entry_dict["globalIdentifier"],
+        finished=bool(props["finished"]),
+        deleted_new=bool(props["deletedNew"]),
+        notes=props.get("notes"),
+        create_timestamp=ms_to_datetime(props["createTimeStamp"][1]),
+        start_time=ms_to_datetime(props["startTime"][1]),
+        end_time=ms_to_datetime(props["endTime"][1]) if props.get("endTime") else None,
+        last_update_timestamp=ms_to_datetime(props["lastUpdateTimeStamp"][1]),
+    )
+
+def upsert_task_entry(entry: TaskEntry) -> TaskEntry:
+    """Insert or update a TaskEntry row, keyed by global_identifier."""
+    with SessionLocal() as s:
+        existing = s.query(TaskEntry).filter_by(global_identifier=entry.global_identifier).one_or_none()
+        if existing:
+            # update fields
+            existing.task_id = entry.task_id
+            existing.finished = entry.finished
+            existing.deleted_new = entry.deleted_new
+            existing.notes = entry.notes
+            existing.create_timestamp = entry.create_timestamp
+            existing.start_time = entry.startt_time
+            existing.end_time = entry.end_time
+            existing.last_update_timestamp = entry.last_update_timestamp
+            obj = existing
+        else:
+            s.add(entry)
+            obj = entry
+
+        s.commit()
+        return obj
+    
+def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskEntry], List[TaskEntry], List[TaskEntry]]:
+    """
+    Upsert TaskEntry rows one by one, each with its own commit.
+    Returns (created, updated, unchanged).
+    """
+    created, updated, unchanged = [], [], []
+
+    with SessionLocal() as s:
+        for entry in entries:
+            try:
+                existing = (
+                    s.query(TaskEntry)
+                    .filter_by(global_identifier=entry.global_identifier)
+                    .one_or_none()
+                )
+                if existing:
+                    # check if anything changed
+                    changed = False
+                    fields = [
+                        "task_id",
+                        "finished",
+                        "deleted_new",
+                        "notes",
+                        "create_timestamp",
+                        "start_time",
+                        "end_time",
+                        "last_update_timestamp",
+                    ]
+                    for field in fields:
+                        new_val = getattr(entry, field)
+                        if getattr(existing, field) != new_val:
+                            setattr(existing, field, new_val)
+                            changed = True
+
+                    if changed:
+                        s.commit()
+                        s.refresh(existing)
+                        updated.append(existing)
+                    else:
+                        unchanged.append(existing)
+
+                else:
+                    s.add(entry)
+                    s.commit()
+                    s.refresh(entry)
+                    created.append(entry)
+
+            except Exception as e:
+                s.rollback()
+                print(f" Skipped entry {entry.global_identifier} due to error: {e}")
+
+    return created, updated, unchanged

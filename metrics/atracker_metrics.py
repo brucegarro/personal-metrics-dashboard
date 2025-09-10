@@ -103,6 +103,3 @@ def sync_folder(dropbox_path, local_folder):
     while result.has_more:
         result = dbx.files_list_folder_continue(result.cursor)
         handle_entries(result.entries)
-
-# Run
-sync_folder(DROPBOX_FOLDER, LOCAL_FOLDER)
