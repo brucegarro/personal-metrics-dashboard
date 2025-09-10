@@ -37,19 +37,13 @@ def parse_atracker_datafile(filepath: str) -> dict:
     tasks_data = data['changesByEntity']['TaskEntry']
     return tasks_data
 
-
-# Replace with the access token from the Dropbox App Console
-ACCESS_TOKEN = "PROVIDE TOKEN FROM  ENV VARIABLES"
-
-
-# Dropbox folder to sync from
-DROPBOX_FOLDER = "/apps/atracker/mainstore.v2"
+DROPBOX_ACCESS_TOKEN = os.environ.get("DROPBOX_ACCESS_TOKEN")
+DROPBOX_FOLDER = "/apps/atracker/mainstore.v2/baselines"
 
 # Local destination folder
 LOCAL_FOLDER = "data/atracker"
-LOCAL_FOLDER = "/Users/brucegarro/project/personal-metrics-dashboard/data/atracker/"
 
-dbx = dropbox.Dropbox(ACCESS_TOKEN)
+dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
 def to_utc(dt: datetime) -> datetime:
     """Return a UTC-aware datetime for comparison."""
@@ -58,27 +52,33 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 def is_up_to_date(local_path, entry: dropbox.files.FileMetadata) -> bool:
-    """Skip if local file matches Dropbox by size + (client|server)_modified."""
     if not os.path.exists(local_path):
         return False
     local_size = os.path.getsize(local_path)
-    local_mtime = to_utc(datetime.fromtimestamp(os.path.getmtime(local_path), tz=timezone.utc))
+    return local_size == entry.size
 
-    # Prefer client_modified, fall back to server_modified
-    remote_mtime = getattr(entry, "client_modified", None) or getattr(entry, "server_modified", None)
-    remote_mtime = to_utc(remote_mtime)
+def find_existing_version(local_dir, filename):
+    """Check if any version of this file (ignoring date prefix) already exists."""
+    base_name = os.path.basename(filename)
+    for f in os.listdir(local_dir):
+        if f.endswith(base_name):  # e.g. "MM-DD-YYYY_filename.cdeevent"
+            return True
+    return False
 
-    return (
-        local_size == entry.size
-        and abs((local_mtime - remote_mtime).total_seconds()) < 2
-    )
-
-def download_file(dbx_path, local_path):
+def download_file(dbx_path, local_path, dated=True):
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
     md, res = dbx.files_download(dbx_path)
+
+    # Add date prefix if requested
+    if dated:
+        today_str = datetime.now().strftime("%m-%d-%Y")
+        dirname, fname = os.path.split(local_path)
+        local_path = os.path.join(dirname, f"{today_str}_{fname}")
+
     with open(local_path, "wb") as f:
         f.write(res.content)
     print(f"Downloaded {dbx_path} → {local_path}")
+
 
 def sync_folder(dropbox_path, local_folder):
     result = dbx.files_list_folder(dropbox_path, recursive=True)
@@ -89,11 +89,15 @@ def sync_folder(dropbox_path, local_folder):
                 relative_path = entry.path_display.replace(dropbox_path, "").lstrip("/")
                 local_path = os.path.join(local_folder, relative_path)
 
-                if is_up_to_date(local_path, entry):
-                    print(f"Skipping (up-to-date): {local_path}")
+                # Ensure local folder exists
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+                # Check if we already have *any* version of this file
+                if find_existing_version(os.path.dirname(local_path), os.path.basename(local_path)):
+                    print(f"Skipping (already versioned locally): {local_path}")
                     continue
 
-                download_file(entry.path_display, local_path)
+                download_file(entry.path_display, local_path, dated=True)
 
     handle_entries(result.entries)
     while result.has_more:
