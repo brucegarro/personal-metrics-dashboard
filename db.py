@@ -99,28 +99,16 @@ def task_entry_from_json(entry_dict: dict) -> TaskEntry:
         last_update_timestamp=ms_to_datetime(props["lastUpdateTimeStamp"][1]),
     )
 
-def upsert_task_entry(entry: TaskEntry) -> TaskEntry:
-    """Insert or update a TaskEntry row, keyed by global_identifier."""
-    with SessionLocal() as s:
-        existing = s.query(TaskEntry).filter_by(global_identifier=entry.global_identifier).one_or_none()
-        if existing:
-            # update fields
-            existing.task_id = entry.task_id
-            existing.finished = entry.finished
-            existing.deleted_new = entry.deleted_new
-            existing.notes = entry.notes
-            existing.create_timestamp = entry.create_timestamp
-            existing.start_time = entry.startt_time
-            existing.end_time = entry.end_time
-            existing.last_update_timestamp = entry.last_update_timestamp
-            obj = existing
-        else:
-            s.add(entry)
-            obj = entry
+def clean_task_id(raw_task_id: str) -> str:
+    """
+    Strip everything after the first '€' character.
+    Example:
+        "Coding€€icon/Programming_py.png..." -> "Coding"
+    """
+    if not raw_task_id:
+        return raw_task_id
+    return raw_task_id.split("€", 1)[0]
 
-        s.commit()
-        return obj
-    
 def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskEntry], List[TaskEntry], List[TaskEntry]]:
     """
     Upsert TaskEntry rows one by one, each with its own commit.
@@ -131,13 +119,16 @@ def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskE
     with SessionLocal() as s:
         for entry in entries:
             try:
+                # always normalize task_id before comparing or persisting
+                entry.task_id = clean_task_id(entry.task_id)
+
                 existing = (
                     s.query(TaskEntry)
                     .filter_by(global_identifier=entry.global_identifier)
                     .one_or_none()
                 )
+
                 if existing:
-                    # check if anything changed
                     changed = False
                     fields = [
                         "task_id",
@@ -170,6 +161,6 @@ def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskE
 
             except Exception as e:
                 s.rollback()
-                print(f" Skipped entry {entry.global_identifier} due to error: {e}")
+                print(f"Skipped entry {entry.global_identifier} due to error: {e}")
 
     return created, updated, unchanged
