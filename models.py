@@ -37,3 +37,11 @@ class Metric(Base):
         # prevents duplicates on re-runs; lets us UPSERT cleanly
         UniqueConstraint("user_id", "date", "endpoint", "name", name="ux_metric_dedupe"),
     )
+
+    def __repr__(self):
+        return (f"<Metric(id={self.id}, "
+                f"user_id='{self.user_id}', "
+                f"date={self.date}, "
+                f"endpoint='{self.endpoint}', "
+                f"name='{self.name}', "
+                f"value={self.value})>")
