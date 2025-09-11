@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 from metrics.oura_metrics import OuraMetrics, get_access_token_from_cache
+from queueing import get_queue
+from jobs import run_etl_job
 
 USERID = "brucegarro"
 
@@ -39,6 +41,10 @@ async def health_check():
         start_date=default_start_date,
         end_date=default_end_date,
     )
+
+    q = get_queue("etl")
+    job = q.enqueue(run_etl_job, "atracker", date.today().isoformat(), USERID)
+    enqueued_jobs["atracker"] = job.id
 
     metrics_view = oura_metrics.get_metrics_pivot(
         USERID,

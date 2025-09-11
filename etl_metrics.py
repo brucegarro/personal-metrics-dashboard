@@ -1,6 +1,8 @@
 import os
 import json
 from datetime import datetime
+from collections import defaultdict
+from zoneinfo import ZoneInfo
 import polars as pl
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import select
@@ -8,7 +10,7 @@ from db import SessionLocal, ENGINE
 from models import Metric
 from s3io import _list_ndjson_gz_keys, _load_ndjson_gz_as_polars
 from metrics.atracker_metrics import sync_folder, parse_atracker_datafile
-from db import upsert_task_entries_row_by_row, task_entry_from_json
+from db import upsert_task_entries_row_by_row, task_entry_from_json, aggregate_task_entries_to_metrics
 
 BUCKET = os.getenv("S3_BUCKET")
 ENV = os.getenv("S3_ENV", "dev")
@@ -18,11 +20,14 @@ ACCESS = os.getenv("S3_ACCESS_KEY")
 SECRET = os.getenv("S3_SECRET_KEY")
 DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "user")
 
+
 ### ATRACKER ETL
-def etl_daily_atracker_task_entries() -> int:
+def etl_daily_atracker_task_entries(user_id: str) -> int:
     downloaded_files = sync_folder()
     updates = 0
     created = []; updated = []; unchanged = []
+
+    # Create or update TaskEntry rows
     for filepath in downloaded_files:
         task_entries = [
             task_entry_from_json(task_entry_json)
@@ -35,6 +40,13 @@ def etl_daily_atracker_task_entries() -> int:
         unchanged += _unchanged
 
     updates += len(created) + len(updated)
+    dates = { entry.start_time.date() for entry in created + updated }
+
+    if not dates:
+        return updates
+
+    metrics_created, metrics_updated = aggregate_task_entries_to_metrics(dates, user_id)
+    updates += metrics_created + metrics_updated
 
     return updates
 

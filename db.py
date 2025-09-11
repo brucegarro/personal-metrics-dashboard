@@ -1,8 +1,12 @@
 import os
+import re
+import unicodedata
 from contextlib import contextmanager
 from datetime import date as Date
+from zoneinfo import ZoneInfo
 from typing import Sequence, Set, List, Tuple
-from sqlalchemy import create_engine, text, select
+from collections import defaultdict
+from sqlalchemy import create_engine, text, select, Date as SQLDate
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
@@ -10,6 +14,62 @@ from models import Metric, SeenEvent, TaskEntry
 
 ENGINE = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True, future=True)
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False, future=True)
+
+EST = ZoneInfo("America/New_York")
+
+def aggregate_task_entries_to_metrics(dates: set[Date], user_id: str) -> tuple[int, int]:
+    """
+    Aggregate TaskEntry rows into daily Metric rows.
+    Skips deleted tasks and those without end_time.
+    
+    Returns: (metrics_created, metrics_updated)
+    """
+    created, updated = 0, 0
+    task_hours: dict[tuple[str, Date], float] = defaultdict(float)
+
+    with SessionLocal() as s:
+        entries = (
+            s.query(TaskEntry)
+            .filter(TaskEntry.start_time.cast(SQLDate).in_(dates))
+            .all()
+        )
+
+        for entry in entries:
+            if not entry.end_time or entry.deleted_new:
+                continue  # skip incomplete or deleted tasks
+
+            local_date = entry.start_time.astimezone(EST).date()
+            hours = (entry.end_time - entry.start_time).total_seconds() / 3600.0
+            task_hours[(entry.task_id, local_date)] += hours
+
+        for (task_id, date), total_hours in task_hours.items():
+            metric = (
+                s.query(Metric)
+                .filter_by(
+                    user_id=user_id,
+                    date=date,
+                    endpoint="atracker",
+                    name=task_id,
+                )
+                .one_or_none()
+            )
+            if metric:
+                metric.value = total_hours
+                updated += 1
+            else:
+                metric = Metric(
+                    name=task_id,
+                    user_id=user_id,
+                    date=date,
+                    endpoint="atracker",
+                    value=total_hours,
+                )
+                s.add(metric)
+                created += 1
+
+        s.commit()
+
+    return created, updated
 
 @contextmanager
 def _conn():
@@ -83,12 +143,33 @@ def create_seen_events_bulk(
 
 from models import TaskEntry, ms_to_datetime
 
+def clean_task_id(raw_task_id: str) -> str:
+    """
+    Strip everything after the first '€' character.
+    Example:
+        "Job Activities€€icon/Programming_py.png..." -> "job_activities"
+        - take text before the first '€€'
+        - lowercase
+        - normalize accents
+        - keep letters/numbers, convert spaces/dashes to underscores
+        - collapse duplicate underscores
+    """
+    if not raw_task_id:
+        return raw_task_id
+    head = raw_task_id.split("€€", 1)[0]
+    head = unicodedata.normalize("NFKD", head).encode("ascii", "ignore").decode("ascii")
+    head = head.lower().strip()
+    head = re.sub(r"[^\w\s-]", "", head)
+    head = re.sub(r"[\s-]+", "_", head)
+    head = re.sub(r"_+", "_", head).strip("_")
+    return head
+
 def task_entry_from_json(entry_dict: dict) -> TaskEntry:
     """Parse TaskEntry JSON into a TaskEntry ORM object."""
     props = {p["propertyName"]: p.get("value") for p in entry_dict["properties"]}
 
     return TaskEntry(
-        task_id=props["taskID"].split("€€")[0],
+        task_id=clean_task_id(props["taskID"]),
         global_identifier=entry_dict["globalIdentifier"],
         finished=bool(props["finished"]),
         deleted_new=bool(props["deletedNew"]),
@@ -98,16 +179,6 @@ def task_entry_from_json(entry_dict: dict) -> TaskEntry:
         end_time=ms_to_datetime(props["endTime"][1]) if props.get("endTime") else None,
         last_update_timestamp=ms_to_datetime(props["lastUpdateTimeStamp"][1]),
     )
-
-def clean_task_id(raw_task_id: str) -> str:
-    """
-    Strip everything after the first '€' character.
-    Example:
-        "Coding€€icon/Programming_py.png..." -> "Coding"
-    """
-    if not raw_task_id:
-        return raw_task_id
-    return raw_task_id.split("€", 1)[0]
 
 def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskEntry], List[TaskEntry], List[TaskEntry]]:
     """
@@ -164,3 +235,4 @@ def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskE
                 print(f"Skipped entry {entry.global_identifier} due to error: {e}")
 
     return created, updated, unchanged
+
