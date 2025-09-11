@@ -65,7 +65,8 @@ def find_existing_version(local_dir, filename):
             return True
     return False
 
-def download_file(dbx_path, local_path, dated=True):
+def download_file(dbx_path, local_path, dated=True) -> str:
+    """Download a file and return the local path."""
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
     md, res = dbx.files_download(dbx_path)
 
@@ -78,12 +79,17 @@ def download_file(dbx_path, local_path, dated=True):
     with open(local_path, "wb") as f:
         f.write(res.content)
     print(f"Downloaded {dbx_path} → {local_path}")
+    return local_path
 
 
-def sync_folder(dropbox_path, local_folder):
+def sync_folder(dropbox_path: str = DROPBOX_FOLDER, local_folder: str = LOCAL_FOLDER) -> list[str]:
+    """Sync a Dropbox folder → local. Returns list of downloaded/updated files."""
+    downloaded_files: list[str] = []
+
     result = dbx.files_list_folder(dropbox_path, recursive=True)
 
     def handle_entries(entries):
+        nonlocal downloaded_files
         for entry in entries:
             if isinstance(entry, dropbox.files.FileMetadata):
                 relative_path = entry.path_display.replace(dropbox_path, "").lstrip("/")
@@ -92,14 +98,20 @@ def sync_folder(dropbox_path, local_folder):
                 # Ensure local folder exists
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
-                # Check if we already have *any* version of this file
+                # Skip if already versioned locally
                 if find_existing_version(os.path.dirname(local_path), os.path.basename(local_path)):
                     print(f"Skipping (already versioned locally): {local_path}")
                     continue
 
-                download_file(entry.path_display, local_path, dated=True)
+                saved_path = download_file(entry.path_display, local_path, dated=True)
+                downloaded_files.append(saved_path)
 
+    # First page
     handle_entries(result.entries)
+
+    # Paginate if more results
     while result.has_more:
         result = dbx.files_list_folder_continue(result.cursor)
         handle_entries(result.entries)
+
+    return downloaded_files

@@ -7,6 +7,8 @@ from sqlalchemy import select
 from db import SessionLocal, ENGINE
 from models import Metric
 from s3io import _list_ndjson_gz_keys, _load_ndjson_gz_as_polars
+from metrics.atracker_metrics import sync_folder, parse_atracker_datafile
+from db import upsert_task_entries_row_by_row, task_entry_from_json
 
 BUCKET = os.getenv("S3_BUCKET")
 ENV = os.getenv("S3_ENV", "dev")
@@ -16,7 +18,27 @@ ACCESS = os.getenv("S3_ACCESS_KEY")
 SECRET = os.getenv("S3_SECRET_KEY")
 DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "user")
 
+### ATRACKER ETL
+def etl_daily_atracker_task_entries() -> int:
+    downloaded_files = sync_folder()
+    updates = 0
+    created = []; updated = []; unchanged = []
+    for filepath in downloaded_files:
+        task_entries = [
+            task_entry_from_json(task_entry_json)
+            for task_entry_json
+            in parse_atracker_datafile(filepath)
+        ]
+        _created, _updated, _unchanged = upsert_task_entries_row_by_row(task_entries)
+        created += _created
+        updated += _updated
+        unchanged += _unchanged
 
+    updates += len(created) + len(updated)
+
+    return updates
+
+## OURA ETL
 def _raw_glob(vendor: str, api: str, endpoint: str, date: str) -> str:
     # matches all hour partitions for that date
     return (
