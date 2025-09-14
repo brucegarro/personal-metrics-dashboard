@@ -17,6 +17,13 @@ DROPBOX_REDIRECT_URI = os.getenv("DROPBOX_REDIRECT_URI")
 DOMAIN = os.getenv("DOMAIN")
 
 
+
+from fastapi import Depends
+
+def get_redis_client():
+    from metrics.oura.ingest import _redis
+    return _redis
+
 app = FastAPI(title="Personal Metrics Dashboard")
 
 
@@ -25,8 +32,8 @@ def read_root():
     return {"message": "Welcome to the Personal Metrics Dashboard"}
 
 @app.get("/health")
-async def health_check():
-    access_token = await get_access_token_from_cache(USERID)
+async def health_check(redis_client=Depends(get_redis_client)):
+    access_token = await get_access_token_from_cache(USERID, redis_client=redis_client)
     is_expired = access_token and int(time.time()) > access_token.get("expires_at", 0)
 
     if access_token is None or is_expired:
@@ -35,7 +42,7 @@ async def health_check():
             "url": url,
             "status": "healthy"
         }
-    
+
     # Ensure Dropbox auth exists before Atracker ETL
     dbx_mgr = DropboxAuthManager()
     dbx_token = await get_dropbox_token(USERID)
@@ -62,7 +69,7 @@ async def health_check():
                 "message": "Authorize Dropbox and then call /dropbox_finish?code=...",
                 "status": "healthy"
             }
-    
+
     # Get data from Oura
     default_start_date = date.today() - timedelta(days=90)
     default_end_date = date.today()
@@ -117,7 +124,8 @@ async def dropbox_callback(code: str, state: str):
 async def handle_callback(
     code: str,
     state: str,
-    error: Optional[str] = None
+    error: Optional[str] = None,
+    redis_client=Depends(get_redis_client)
 ):
     """
     Handles a GET request to the /callback endpoint,
@@ -125,9 +133,9 @@ async def handle_callback(
     """
     if error:
         return {"message": f"Error during callback: {error}"}
-    
-    access_token = await get_and_cache_access_token(code)
-    
+
+    access_token = await get_and_cache_access_token(code, redis_client=redis_client)
+
     # return {
     #     "access_token": access_token,
     #     "state": state,

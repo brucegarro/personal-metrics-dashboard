@@ -22,20 +22,26 @@ _redis = get_async_redis()
 def _key(user_id: str) -> str:
 	return auth_key("oura", user_id)
 
-async def cache_access_token_from_cache(user_id: str, token: Dict[str, Any], ttl: int = REDIS_TTL_SECONDS) -> None:
+async def cache_access_token_from_cache(user_id: str, token: Dict[str, Any], ttl: int = REDIS_TTL_SECONDS, redis_client=None) -> None:
 	"""
 	token should include at least: access_token, expires_at (epoch seconds)
 	"""
+	if redis_client is None:
+		redis_client = _redis
 	if "expires_at" not in token:
 		token["expires_at"] = int(time.time()) + token.get("expires_in", REDIS_TTL_SECONDS)
-	await _redis.set(_key(user_id), json.dumps(token), ex=ttl)
+	await redis_client.set(_key(user_id), json.dumps(token), ex=ttl)
 
-async def get_access_token_from_cache(user_id: str) -> Optional[Dict[str, Any]]:
-	raw = await _redis.get(_key(user_id))
+async def get_access_token_from_cache(user_id: str, redis_client=None) -> Optional[Dict[str, Any]]:
+	if redis_client is None:
+		redis_client = _redis
+	raw = await redis_client.get(_key(user_id))
 	return json.loads(raw) if raw else None
 
-async def delete_access_token(user_id: str) -> None:
-	await _redis.delete(_key(user_id))
+async def delete_access_token(user_id: str, redis_client=None) -> None:
+	if redis_client is None:
+		redis_client = _redis
+	await redis_client.delete(_key(user_id))
 
 def get_oura_auth_url():
 	client = OuraOAuth2Client(client_id=OURA_CLIENT_ID, client_secret=OURA_CLIENT_SECRET)
@@ -44,13 +50,13 @@ def get_oura_auth_url():
 	url, state = client.authorize_endpoint()
 	return url
 
-async def get_and_cache_access_token(code: str, user_key: str = "brucegarro"):
+async def get_and_cache_access_token(code: str, user_key: str = "brucegarro", redis_client=None):
 	client = OuraOAuth2Client(client_id=OURA_CLIENT_ID, client_secret=OURA_CLIENT_SECRET)
 	client.session.scope = "All scopes"
 	client.session.redirect_uri = OURA_REDIRECT_URI
 	token_dict = client.fetch_access_token(code=code)
 	access_token = token_dict.get("access_token")
-	await cache_access_token_from_cache(user_key, token_dict)
+	await cache_access_token_from_cache(user_key, token_dict, redis_client=redis_client)
 	return access_token
 
 def get_data_from_api(access_token: str, endpoint: str, start_date: date, end_date: date) -> Dict[str, Any]:
