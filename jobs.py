@@ -1,3 +1,5 @@
+from datetime import date
+from queueing import get_queue
 from typing import Literal, TypedDict
 from etl_metrics import etl_daily_sleep_day, etl_daily_readiness_day, etl_daily_atracker_task_entries
 
@@ -19,3 +21,8 @@ def run_etl_job(endpoint: Endpoint, date_str: str, user_id: str) -> EtlResult:
     else:
         raise ValueError(f"Unsupported endpoint: {endpoint}")
     return {"endpoint": endpoint, "date": date_str, "user_id": user_id, "inserted": n}
+
+def enqueue_atracker_job(enqueued_jobs, user_id):
+    q = get_queue("etl")
+    job = q.enqueue(run_etl_job, "atracker", date.today().isoformat(), user_id)
+    enqueued_jobs["atracker"] = job.id

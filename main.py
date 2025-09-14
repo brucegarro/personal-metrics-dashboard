@@ -10,7 +10,7 @@ from metrics.view import get_metrics_pivot
 from metrics.atracker.dropbox import DropboxAuthManager, get_dropbox_token
 import os
 from queueing import get_queue
-from jobs import run_etl_job
+from jobs import run_etl_job, enqueue_atracker_job
 
 USERID = "brucegarro"
 DROPBOX_REDIRECT_URI = os.getenv("DROPBOX_REDIRECT_URI")
@@ -80,9 +80,7 @@ async def health_check(redis_client=Depends(get_redis_client)):
         end_date=default_end_date,
     )
 
-    q = get_queue("etl")
-    job = q.enqueue(run_etl_job, "atracker", date.today().isoformat(), USERID)
-    enqueued_jobs["atracker"] = job.id
+    enqueue_atracker_job(enqueued_jobs, USERID)
 
     metrics_view = get_metrics_pivot(
         USERID,
@@ -135,11 +133,5 @@ async def handle_callback(
         return {"message": f"Error during callback: {error}"}
 
     access_token = await get_and_cache_access_token(code, redis_client=redis_client)
-
-    # return {
-    #     "access_token": access_token,
-    #     "state": state,
-    #     "message": "Callback handled successfully"
-    # }
 
     return RedirectResponse(url="/health")
