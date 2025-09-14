@@ -70,3 +70,41 @@ async def test_health_valid_token(monkeypatch, async_client):
     assert "persisted_data" in data
     assert "enqueued_jobs" in data
     assert data["status"] == "healthy"
+
+@pytest.mark.asyncio
+async def test_health_dropbox_auth_required(monkeypatch, async_client):
+    # Patch Redis to return valid Oura token
+    async def get_bytes(self, key):
+        return b'{"access_token": "abc", "expires_at": 9999999999}'
+    monkeypatch.setattr(MockRedis, "get", get_bytes)
+    # Patch Dropbox token to return None (simulate missing Dropbox auth)
+    monkeypatch.setattr("metrics.atracker.dropbox.get_dropbox_token", lambda user_id: None)
+    # Patch DropboxAuthManager.get_authorize_url to return a dummy URL
+    monkeypatch.setattr("metrics.atracker.dropbox.DropboxAuthManager.get_authorize_url", lambda self: "https://dropbox-auth-url")
+    # Patch Oura API and metrics pivot
+    monkeypatch.setattr("metrics.oura.ingest.pull_data", lambda *args, **kwargs: ([], [], {}))
+    monkeypatch.setattr("metrics.view.get_metrics_pivot", lambda *args, **kwargs: ["metrics_view"])
+    response = await async_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "dropbox_url" in data or "dropbox_auth_required" in data
+    assert data["status"] == "healthy"
+
+@pytest.mark.asyncio
+async def test_health_dropbox_redirect(monkeypatch, async_client):
+    # Patch Redis to return valid Oura token
+    async def get_bytes(self, key):
+        return b'{"access_token": "abc", "expires_at": 9999999999}'
+    monkeypatch.setattr(MockRedis, "get", get_bytes)
+    # Patch Dropbox token to return None (simulate missing Dropbox auth)
+    monkeypatch.setattr("metrics.atracker.dropbox.get_dropbox_token", lambda user_id: None)
+    # Patch DROPBOX_REDIRECT_URI and DOMAIN env vars
+    monkeypatch.setattr("os.getenv", lambda key: "dummy" if key == "DROPBOX_REDIRECT_URI" else "example.com")
+    # Patch Oura API and metrics pivot
+    monkeypatch.setattr("metrics.oura.ingest.pull_data", lambda *args, **kwargs: ([], [], {}))
+    monkeypatch.setattr("metrics.view.get_metrics_pivot", lambda *args, **kwargs: ["metrics_view"])
+    response = await async_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "next" in data
+    assert data["status"] == "healthy"
