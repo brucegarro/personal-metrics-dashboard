@@ -5,7 +5,8 @@ from datetime import date, timedelta
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from metrics.oura_metrics import OuraMetrics, get_access_token_from_cache
+from metrics.oura.ingest import get_oura_auth_url, get_and_cache_access_token, get_access_token_from_cache, pull_data
+from metrics.view import get_metrics_pivot
 from metrics.atracker.dropbox import DropboxAuthManager, get_dropbox_token
 import os
 from queueing import get_queue
@@ -25,12 +26,11 @@ def read_root():
 
 @app.get("/health")
 async def health_check():
-    oura_metrics = OuraMetrics()
     access_token = await get_access_token_from_cache(USERID)
     is_expired = access_token and int(time.time()) > access_token.get("expires_at", 0)
 
     if access_token is None or is_expired:
-        url = oura_metrics.get_oura_auth_url()
+        url = get_oura_auth_url()
         return {
             "url": url,
             "status": "healthy"
@@ -67,7 +67,7 @@ async def health_check():
     default_start_date = date.today() - timedelta(days=90)
     default_end_date = date.today()
 
-    api_data, persisted_data, enqueued_jobs = oura_metrics.pull_data(
+    api_data, persisted_data, enqueued_jobs = pull_data(
         access_token["access_token"],
         start_date=default_start_date,
         end_date=default_end_date,
@@ -77,7 +77,7 @@ async def health_check():
     job = q.enqueue(run_etl_job, "atracker", date.today().isoformat(), USERID)
     enqueued_jobs["atracker"] = job.id
 
-    metrics_view = oura_metrics.get_metrics_pivot(
+    metrics_view = get_metrics_pivot(
         USERID,
         default_start_date,
         default_end_date,
@@ -126,8 +126,7 @@ async def handle_callback(
     if error:
         return {"message": f"Error during callback: {error}"}
     
-    oura_metrics = OuraMetrics()
-    access_token = await oura_metrics.get_and_cache_access_token(code)
+    access_token = await get_and_cache_access_token(code)
     
     # return {
     #     "access_token": access_token,
