@@ -9,7 +9,7 @@ from sqlalchemy import select
 from db import SessionLocal, ENGINE
 from models import Metric
 from s3io import _list_ndjson_gz_keys, _load_ndjson_gz_as_polars
-from metrics.atracker_metrics import sync_folder, parse_atracker_datafile
+from metrics.atracker.ingest import sync_folder, parse_atracker_datafile
 from db import upsert_task_entries_row_by_row, task_entry_from_json, aggregate_task_entries_to_metrics
 
 BUCKET = os.getenv("S3_BUCKET")
@@ -23,7 +23,7 @@ DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "user")
 
 ### ATRACKER ETL
 def etl_daily_atracker_task_entries(user_id: str) -> int:
-    downloaded_files = sync_folder()
+    downloaded_files = sync_folder(user_id=user_id)
     updates = 0
     created = []; updated = []; unchanged = []
 
@@ -171,5 +171,3 @@ def _insert_metrics_ignore_conflicts(records: list[dict]) -> int:
         res = s.execute(stmt)
         s.commit()
         return res.rowcount or 0
-
-

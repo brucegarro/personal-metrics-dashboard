@@ -6,25 +6,22 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, Tuple, Optional
 
 from oura import OuraOAuth2Client
-from redis.asyncio import Redis
 from s3io import write_jsonl_gz
 
 from db import get_seen_events, create_seen_events_bulk, get_metrics
 from queueing import get_queue
 from jobs import run_etl_job
+from auth.cache import get_async_redis, REDIS_TTL_SECONDS, auth_key
 
 
 OURA_CLIENT_ID = os.environ["OURA_CLIENT_ID"]
 OURA_CLIENT_SECRET = os.environ["OURA_CLIENT_SECRET"]
 OURA_REDIRECT_URI=os.environ["OURA_REDIRECT_URI"]
 
-REDIS_TTL_SECONDS = 24 * 60 * 60  # 24 hours
-
-# _redis = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
-_redis = Redis(host="redis", port=6379, encoding="utf-8", decode_responses=True)
+_redis = get_async_redis()
 
 def _key(user_id: str) -> str:
-    return f"auth:token:{user_id}"
+    return auth_key("oura", user_id)
 
 async def cache_access_token_from_cache(user_id: str, token: Dict[str, Any], ttl: int = REDIS_TTL_SECONDS) -> None:
     """
