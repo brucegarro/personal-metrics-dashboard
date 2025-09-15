@@ -50,32 +50,70 @@ document.addEventListener("DOMContentLoaded", function() {
 
       // Aggregate metrics by week
       function aggregateWeekly(view, mode) {
-        const groups = {};
-        view.forEach(row => {
-          const key = mode === 'friday' ? getWeekStartFriday(row.date) : getRollingWeekEnd(row.date);
-          if (!groups[key]) {
-            groups[key] = [];
-          }
-          groups[key].push(row);
-        });
-        // Aggregate each group
-        return Object.entries(groups).map(([week, rows]) => {
-          // Aggregate wellness (average)
-          const wellness = {};
-          wellnessKeys.forEach(k => {
-            wellness[k] = rows.map(r => r.wellness[k]).reduce((a,b) => a+b,0) / rows.length;
+        if (mode === 'rolling') {
+          // Group by week ending on Sunday
+          const groups = {};
+          view.forEach(row => {
+            const d = new Date(row.date);
+            // Find next Sunday (week end)
+            const day = d.getDay();
+            const offset = 7 - day - 1; // days until next Sunday
+            const sunday = new Date(d);
+            sunday.setDate(d.getDate() + offset);
+            sunday.setHours(0,0,0,0);
+            const key = sunday.toISOString().slice(0,10);
+            if (!groups[key]) {
+              groups[key] = [];
+            }
+            groups[key].push(row);
           });
-          // Aggregate productivity (sum)
-          const productivity = {};
-          productivityKeys.forEach(k => {
-            productivity[k] = rows.map(r => r.productivity[k]||0).reduce((a,b) => a+b,0);
+          // Aggregate each group
+          return Object.entries(groups).map(([weekEnd, rows]) => {
+            // Aggregate wellness (average)
+            const wellness = {};
+            wellnessKeys.forEach(k => {
+              wellness[k] = rows.map(r => r.wellness[k]).reduce((a,b) => a+b,0) / rows.length;
+            });
+            // Aggregate productivity (sum)
+            const productivity = {};
+            productivityKeys.forEach(k => {
+              productivity[k] = rows.map(r => r.productivity[k]||0).reduce((a,b) => a+b,0);
+            });
+            return {
+              date: weekEnd,
+              wellness,
+              productivity
+            };
+          }).sort((a,b) => a.date.localeCompare(b.date));
+        } else {
+          // Default: week starting Friday
+          const groups = {};
+          view.forEach(row => {
+            const key = getWeekStartFriday(row.date);
+            if (!groups[key]) {
+              groups[key] = [];
+            }
+            groups[key].push(row);
           });
-          return {
-            date: week,
-            wellness,
-            productivity
-          };
-        }).sort((a,b) => a.date.localeCompare(b.date));
+          // Aggregate each group
+          return Object.entries(groups).map(([week, rows]) => {
+            // Aggregate wellness (average)
+            const wellness = {};
+            wellnessKeys.forEach(k => {
+              wellness[k] = rows.map(r => r.wellness[k]).reduce((a,b) => a+b,0) / rows.length;
+            });
+            // Aggregate productivity (sum)
+            const productivity = {};
+            productivityKeys.forEach(k => {
+              productivity[k] = rows.map(r => r.productivity[k]||0).reduce((a,b) => a+b,0);
+            });
+            return {
+              date: week,
+              wellness,
+              productivity
+            };
+          }).sort((a,b) => a.date.localeCompare(b.date));
+        }
       }
 
       // Helper to build datasets with toggled state

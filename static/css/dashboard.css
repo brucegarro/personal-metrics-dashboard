@@ -84,3 +84,34 @@ canvas {
     font-size: 1.5rem;
   }
 }
+.aggregation-toggle-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+  gap: 2rem;
+}
+.aggregation-toggle-btn {
+  background: #f4f4f4;
+  border-radius: 8px;
+  padding: 1rem 2rem;
+  min-width: 220px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  font-size: 1rem;
+  color: #333;
+  border: none;
+  cursor: pointer;
+  margin: 0 0.5rem;
+  transition: background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: normal;
+}
+.aggregation-toggle-btn.toggled {
+  background: #e0f7fa;
+  font-weight: bold;
+  color: #00796b;
+  box-shadow: 0 2px 8px rgba(0,121,107,0.08);
+}
