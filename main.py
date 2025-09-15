@@ -44,14 +44,16 @@ async def health_check(redis_client=Depends(get_redis_client)):
     access_token = await get_access_token_from_cache(USERID, redis_client=redis_client)
     is_expired = access_token and int(time.time()) > access_token.get("expires_at", 0)
 
-    if access_token is None or is_expired:
-        url = get_oura_auth_url()
-        return {
-            "url": url,
-            "status": "healthy"
-        }
+    oura_auth_url = None
+    dropbox_auth_url = None
+    oura_auth_valid = False
+    dropbox_auth_valid = False
 
-    # Ensure Dropbox auth exists before Atracker ETL
+    if access_token is None or is_expired:
+        oura_auth_url = get_oura_auth_url()
+    else:
+        oura_auth_valid = True
+
     dbx_mgr = DropboxAuthManager()
     dbx_token = await get_dropbox_token(USERID)
     if not dbx_token:
@@ -65,42 +67,40 @@ async def health_check(redis_client=Depends(get_redis_client)):
                     host = host[len("https://"):]
                 host = host.strip("/")
                 next_url = f"https://{DOMAIN}/dropbox_start"
-            return {
-                "dropbox_auth_required": True,
-                "next": next_url,
-                "status": "healthy",
-            }
+            dropbox_auth_url = next_url
         else:
-            dropbox_url = dbx_mgr.get_authorize_url()
-            return {
-                "dropbox_url": dropbox_url,
-                "message": "Authorize Dropbox and then call /dropbox_finish?code=...",
-                "status": "healthy"
-            }
+            dropbox_auth_url = dbx_mgr.get_authorize_url()
+    else:
+        dropbox_auth_valid = True
 
     # Get data from Oura
     default_start_date = date.today() - timedelta(days=90)
     default_end_date = date.today()
 
-    api_data, persisted_data, enqueued_jobs = pull_data(
-        access_token["access_token"],
-        start_date=default_start_date,
-        end_date=default_end_date,
-    )
-
-    enqueue_atracker_job(enqueued_jobs, USERID)
-
+    api_data, persisted_data, enqueued_jobs = (None, None, None)
+    # Always return metrics_view, even if Oura/Dropbox auth is not valid
     metrics_view = get_metrics_pivot(
         USERID,
         default_start_date,
         default_end_date,
     )
+    if oura_auth_valid:
+        api_data, persisted_data, enqueued_jobs = pull_data(
+            access_token["access_token"],
+            start_date=default_start_date,
+            end_date=default_end_date,
+        )
+        enqueue_atracker_job(enqueued_jobs, USERID)
 
     return {
         "metrics_view": metrics_view,
         "api_data": api_data,
         "persisted_data": persisted_data,
         "enqueued_jobs": enqueued_jobs,
+        "oura_auth_url": oura_auth_url,
+        "oura_auth_valid": oura_auth_valid,
+        "dropbox_auth_url": dropbox_auth_url,
+        "dropbox_auth_valid": dropbox_auth_valid,
         "status": "healthy"
     }
 
@@ -124,7 +124,7 @@ async def dropbox_callback(code: str, state: str):
         return {"error": "DROPBOX_REDIRECT_URI is not configured"}
     mgr = DropboxAuthManager()
     await mgr.finish_redirect(USERID, code, state, DROPBOX_REDIRECT_URI)
-    return RedirectResponse(url="/health")
+    return RedirectResponse(url="/dashboard")
 
 @app.get("/oura_callback")
 async def handle_callback(
@@ -142,4 +142,4 @@ async def handle_callback(
 
     access_token = await get_and_cache_access_token(code, redis_client=redis_client)
 
-    return RedirectResponse(url="/health")
+    return RedirectResponse(url="/dashboard")

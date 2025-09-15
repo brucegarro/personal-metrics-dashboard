@@ -4,6 +4,37 @@ document.addEventListener("DOMContentLoaded", function() {
   fetch("/health")
     .then(response => response.json())
     .then(apiResponse => {
+      // Render auth status/buttons
+      function renderAuthStatus() {
+        const section = document.getElementById("authStatusSection");
+        section.innerHTML = "";
+        let html = "";
+        // Oura
+        if (apiResponse.oura_auth_url) {
+          html += `<button id='ouraAuthBtn' class='auth-btn'>Authorize Oura</button>`;
+        } else if (apiResponse.oura_auth_valid) {
+          html += `<div class='auth-valid'>Oura authorization valid</div>`;
+        }
+        // Dropbox
+        if (apiResponse.dropbox_auth_url) {
+          html += `<button id='dropboxAuthBtn' class='auth-btn'>Authorize Dropbox</button>`;
+        } else if (apiResponse.dropbox_auth_valid) {
+          html += `<div class='auth-valid'>Dropbox authorization valid</div>`;
+        }
+        section.innerHTML = html;
+        // Add button click handlers
+        if (apiResponse.oura_auth_url) {
+          document.getElementById('ouraAuthBtn').onclick = function() {
+            window.location.href = apiResponse.oura_auth_url;
+          };
+        }
+        if (apiResponse.dropbox_auth_url) {
+          document.getElementById('dropboxAuthBtn').onclick = function() {
+            window.location.href = apiResponse.dropbox_auth_url;
+          };
+        }
+      }
+      renderAuthStatus();
       // Aggregation mode: 'friday' or 'rolling'
       let aggregationMode = 'friday';
 
