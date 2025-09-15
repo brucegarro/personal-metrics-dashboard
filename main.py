@@ -3,6 +3,8 @@ from typing import Optional
 from datetime import date, timedelta
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.responses import RedirectResponse
 
 from metrics.oura.ingest import get_oura_auth_url, get_and_cache_access_token, get_access_token_from_cache, pull_data
@@ -24,7 +26,13 @@ def get_redis_client():
     from metrics.oura.ingest import _redis
     return _redis
 
+
 app = FastAPI(title="Personal Metrics Dashboard")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/dashboard")
+def serve_dashboard():
+    return FileResponse("static/dashboard.html")
 
 
 @app.get("/")
