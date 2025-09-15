@@ -251,8 +251,8 @@ document.addEventListener("DOMContentLoaded", function() {
       function renderAggregationToggle() {
         const container = document.getElementById("aggregationToggleContainer");
         container.innerHTML = "";
-        const btnFriday = document.createElement("button");
-        btnFriday.className = "aggregation-toggle-btn" + (aggregationMode === 'friday' ? " active" : "");
+  const btnFriday = document.createElement("button");
+  btnFriday.className = "aggregation-toggle-btn" + (aggregationMode === 'friday' ? " toggled" : "");
         btnFriday.textContent = "Week Starting Friday";
         btnFriday.onclick = function() {
           aggregationMode = 'friday';
@@ -261,8 +261,8 @@ document.addEventListener("DOMContentLoaded", function() {
           renderAggregationToggle();
           renderCategories();
         };
-        const btnRolling = document.createElement("button");
-        btnRolling.className = "aggregation-toggle-btn" + (aggregationMode === 'rolling' ? " active" : "");
+  const btnRolling = document.createElement("button");
+  btnRolling.className = "aggregation-toggle-btn" + (aggregationMode === 'rolling' ? " toggled" : "");
         btnRolling.textContent = "Rolling Week (ends today)";
         btnRolling.onclick = function() {
           aggregationMode = 'rolling';
@@ -285,9 +285,19 @@ document.addEventListener("DOMContentLoaded", function() {
         wellnessBlock.innerHTML = `<div class='category-title'>Wellness</div>`;
         const wellnessList = document.createElement("ul");
         wellnessList.className = "category-list";
-        wellnessKeys.forEach(key => {
+        wellnessKeys.forEach((key, idx) => {
           const li = document.createElement("li");
-          li.className = "category-item" + (toggledKeys.includes(key) ? " toggled" : "");
+          let classNames = "category-item";
+          if (toggledKeys.includes(key)) {
+            classNames += " toggled";
+            // Use border color from chart line for wellness buttons
+            let borderColor = fixedColors[key] || `hsl(${idx * 40}, 70%, 50%)`;
+            if (key === "readiness_score") borderColor = "#87CEFA";
+            if (key === "sleep_score") borderColor = "#A9A9A9";
+            li.style.background = borderColor;
+            li.style.color = "#fff";
+          }
+          li.className = classNames;
           li.textContent = key.replace(/_/g, " ");
           li.style.cursor = "pointer";
           li.onclick = function() {
@@ -311,9 +321,17 @@ document.addEventListener("DOMContentLoaded", function() {
         prodBlock.innerHTML = `<div class='category-title'>Productivity</div>`;
         const prodList = document.createElement("ul");
         prodList.className = "category-list";
-        productivityKeys.forEach(key => {
+        productivityKeys.forEach((key, idx) => {
           const li = document.createElement("li");
-          li.className = "category-item" + (toggledKeys.includes(key) ? " toggled" : "");
+          let classNames = "category-item";
+          if (toggledKeys.includes(key)) {
+            classNames += " toggled";
+            // Use bar fill color for productivity buttons
+            let fillColor = fixedColors[key] || `hsl(${idx * 60}, 60%, 60%)`;
+            li.style.background = fillColor;
+            li.style.color = "#fff";
+          }
+          li.className = classNames;
           li.textContent = key.replace(/_/g, " ");
           li.style.cursor = "pointer";
           li.onclick = function() {

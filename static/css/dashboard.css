@@ -37,11 +37,39 @@
   align-items: center;
   justify-content: space-between;
 }
+/* Toggled state for category items */
 .category-item.toggled {
-  background: #e0f7fa;
   font-weight: bold;
-  color: #00796b;
 }
+
+/* Distinct colors for toggled wellness categories */
+/* Toggled wellness category buttons: always white text unless overridden */
+.category-item.toggled {
+  color: #fff !important;
+}
+.wellness-readiness_score { background: #87CEFA !important; color: #fff !important; }
+.wellness-sleep_score { background: #A9A9A9 !important; color: #fff !important; }
+.wellness-activity_score { background: #8BC34A !important; }
+.wellness-resting_heart_rate { background: #FFB300 !important; }
+.wellness-temperature_deviation { background: #BA68C8 !important; }
+.wellness-total_sleep { background: #039BE5 !important; }
+.wellness-efficiency { background: #F06292 !important; }
+.wellness-deep_sleep { background: #4DD0E1 !important; }
+.wellness-rem_sleep { background: #FF7043 !important; }
+.wellness-light_sleep { background: #AED581 !important; }
+.wellness-sleep_latency { background: #9575CD !important; }
+.wellness-sleep_timing { background: #D4E157 !important; color: #fff !important; }
+.wellness-total_bedtime { background: #FF8A65 !important; }
+.wellness-awake_time { background: #90A4AE !important; }
+/* Chart color classes for toggled categories (add these dynamically in JS) */
+.category-coding { background: #444444 !important; }
+.category-language_learning { background: #DC143C !important; }
+.category-job_activities { background: #008080 !important; }
+.category-read { background: #FFA500 !important; }
+.category-study_engineering_and_ml { background: #1E90FF !important; }
+.category-readiness_score { background: #87CEFA !important; color: #222 !important; }
+.category-sleep_score { background: #A9A9A9 !important; color: #222 !important; }
+/* Add more as needed for wellness keys */
 body {
   font-family: Arial, sans-serif;
   background: #f8f8f8;
@@ -110,8 +138,8 @@ canvas {
   font-weight: normal;
 }
 .aggregation-toggle-btn.toggled {
-  background: #e0f7fa;
+  background: #00796b;
   font-weight: bold;
-  color: #00796b;
-  box-shadow: 0 2px 8px rgba(0,121,107,0.08);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,121,107,0.12);
 }
