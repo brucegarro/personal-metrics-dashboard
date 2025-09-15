@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from datetime import datetime
 from db import get_metrics
@@ -16,7 +17,10 @@ class MetricCategory(Enum):
             raise ValueError(f"Unknown endpoint: {endpoint}")
 
 def get_metrics_pivot(user_id: str, start_date, end_date) -> list[dict]:
+    logger = logging.getLogger("metrics_view")
+    logger.info(f"Fetching metrics for user {user_id} from {start_date} to {end_date}")
     metrics = get_metrics(user_id, start_date, end_date)
+    logger.info(f"Fetched {len(metrics)} metric rows from DB.")
     pivoted = {}
     for metric in metrics:
         day_str = metric.date.isoformat()
@@ -28,9 +32,9 @@ def get_metrics_pivot(user_id: str, start_date, end_date) -> list[dict]:
         category = MetricCategory.from_endpoint(
             metric.endpoint
         ).value
-        
         pivoted[day_str][category][metric.name] = metric.value
     pivoted_list = list(pivoted.values())
+    logger.info(f"Pivoted metrics into {len(pivoted_list)} days.")
     pivoted_list.sort(key=lambda x: datetime.strptime(x["date"], "%Y-%m-%d"))
 
     return pivoted_list

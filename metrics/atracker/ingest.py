@@ -77,10 +77,13 @@ def sync_folder(
 
     Returns a list of local file paths that were downloaded in this run.
     """
+    import logging
+    logger = logging.getLogger("atracker_etl")
     if dbx is None:
         dbx = get_dropbox_client(user_id=user_id)
 
     downloaded_files: list[str] = []
+    logger.info(f"Listing Dropbox folder: {dropbox_path}")
     result = dbx.files_list_folder(dropbox_path, recursive=True)
 
     def handle_entries(entries):
@@ -95,9 +98,10 @@ def sync_folder(
 
                 # Skip if already have any date-prefixed version locally
                 if _find_existing_version(os.path.dirname(local_path), os.path.basename(local_path)):
-                    print(f"Skipping (already versioned locally): {local_path}")
+                    logger.info(f"Skipping (already versioned locally): {local_path}")
                     continue
 
+                logger.info(f"Downloading file {entry.path_display} to {local_path}")
                 saved_path = _download_file(dbx, entry.path_display, local_path, dated=True)
                 downloaded_files.append(saved_path)
 
@@ -109,4 +113,5 @@ def sync_folder(
         result = dbx.files_list_folder_continue(result.cursor)
         handle_entries(result.entries)
 
+    logger.info(f"Downloaded {len(downloaded_files)} files from Dropbox to {local_folder}")
     return downloaded_files

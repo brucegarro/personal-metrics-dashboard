@@ -1,4 +1,13 @@
 import time
+import logging
+import sys
+
+# Ensure logs are visible in Docker log feed
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    stream=sys.stdout
+)
 from typing import Optional
 from datetime import date, timedelta
 
@@ -41,7 +50,10 @@ def read_root():
 
 @app.get("/health")
 async def health_check(redis_client=Depends(get_redis_client)):
+    import logging
+    logger = logging.getLogger("health_check")
     access_token = await get_access_token_from_cache(USERID, redis_client=redis_client)
+    logger.info(f"Fetched Oura access token for user {USERID}: {bool(access_token)}")
     is_expired = access_token and int(time.time()) > access_token.get("expires_at", 0)
 
     oura_auth_url = None
@@ -50,12 +62,14 @@ async def health_check(redis_client=Depends(get_redis_client)):
     dropbox_auth_valid = False
 
     if access_token is None or is_expired:
+        logger.info("Oura access token missing or expired, generating auth URL.")
         oura_auth_url = get_oura_auth_url()
     else:
         oura_auth_valid = True
 
     dbx_mgr = DropboxAuthManager()
     dbx_token = await get_dropbox_token(USERID)
+    logger.info(f"Fetched Dropbox token for user {USERID}: {bool(dbx_token)}")
     if not dbx_token:
         if DROPBOX_REDIRECT_URI:
             next_url = "/dropbox_start"

@@ -2,6 +2,7 @@ import os
 import json
 import time
 import requests
+import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Tuple, Optional
 
@@ -60,16 +61,20 @@ async def get_and_cache_access_token(code: str, user_key: str = "brucegarro", re
 	return access_token
 
 def get_data_from_api(access_token: str, endpoint: str, start_date: date, end_date: date) -> Dict[str, Any]:
+	logger = logging.getLogger("oura_etl")
 	url = f'https://api.ouraring.com/v2/usercollection/{endpoint}'
 	headers = { 'Authorization': f'Bearer {access_token}' }
 	params = {
 		'start_date': start_date.isoformat(),
 		'end_date': end_date.isoformat(),
 	}
+	logger.info(f"Requesting Oura API endpoint {endpoint} for {start_date} to {end_date}")
 	response = requests.request('GET', url, headers=headers, params=params)
+	logger.info(f"Oura API response status: {response.status_code}")
 	return response.json()["data"]
 
 def pull_data(access_token: str, start_date: date, end_date: date, user_id="brucegarro") -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+	logger = logging.getLogger("oura_etl")
 	api_data = {}
 	endpoints = [
 		'daily_sleep',
@@ -77,7 +82,9 @@ def pull_data(access_token: str, start_date: date, end_date: date, user_id="bruc
 	]
 	persisted_data = {}
 	enqueued_jobs = {}
+	logger.info(f"Starting Oura ETL for endpoints: {endpoints}")
 	for endpoint in endpoints:
+		logger.info(f"Checking seen events for endpoint {endpoint}")
 		seen_events = { event.date for event in get_seen_events(
 			user_id=user_id,
 			endpoint=endpoint,
@@ -88,18 +95,21 @@ def pull_data(access_token: str, start_date: date, end_date: date, user_id="bruc
 			start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)
 		} - seen_events
 
+		logger.info(f"Unseen dates for {endpoint}: {len(unseen_dates)}")
 		if unseen_dates:
+			logger.info(f"Fetching API data for {endpoint} from Oura API.")
 			api_data[endpoint] = [
 				r for r in
-				get_data_from_api(
-					access_token,
-					endpoint,
-					min(unseen_dates),
-					max(unseen_dates)
-				) if datetime.fromisoformat(r["timestamp"]).date() in unseen_dates
+					get_data_from_api(
+						access_token,
+						endpoint,
+						min(unseen_dates),
+						max(unseen_dates)
+					) if datetime.fromisoformat(r["timestamp"]).date() in unseen_dates
 			]
 
 		if api_data.get(endpoint):
+			logger.info(f"Persisting {len(api_data[endpoint])} records for {endpoint} to S3.")
 			persisted_data[endpoint] = write_jsonl_gz(
 				records=api_data.get(endpoint, []),
 				vendor="oura",
@@ -108,6 +118,7 @@ def pull_data(access_token: str, start_date: date, end_date: date, user_id="bruc
 				schema="v1"
 			)
 
+			logger.info(f"Creating seen events bulk for {endpoint}.")
 			create_seen_events_bulk(
 				user_id=user_id,
 				endpoint=endpoint,
@@ -117,8 +128,10 @@ def pull_data(access_token: str, start_date: date, end_date: date, user_id="bruc
 				}
 			)
 
+			logger.info(f"Enqueuing ETL job for {endpoint}.")
 			q = get_queue("etl")
 			job = q.enqueue(run_etl_job, endpoint, date.today().isoformat(), user_id, job_timeout=300)
 			enqueued_jobs[endpoint] = job.id
 
+	logger.info(f"ETL complete. API data: {sum(len(v) for v in api_data.values())} records. Persisted: {persisted_data.keys()}. Jobs: {enqueued_jobs}")
 	return api_data, persisted_data, enqueued_jobs

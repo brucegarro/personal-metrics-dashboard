@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 import unicodedata
 from contextlib import contextmanager
 from datetime import date as Date
@@ -79,6 +80,8 @@ def _conn():
 
 
 def get_metrics(user_id: str, start_date: Date, end_date: Date) -> list[dict]:
+    logger = logging.getLogger("db")
+    logger.info(f"Querying metrics for user {user_id} from {start_date} to {end_date}")
     with SessionLocal() as s:
         stmt = (
             select(Metric.date, Metric.endpoint, Metric.name, Metric.value)
@@ -89,7 +92,9 @@ def get_metrics(user_id: str, start_date: Date, end_date: Date) -> list[dict]:
             )
             .order_by(Metric.date, Metric.endpoint, Metric.name)
         )
-        return s.execute(stmt).all()
+        result = s.execute(stmt).all()
+        logger.info(f"Fetched {len(result)} metrics from DB.")
+        return result
 
 
 def get_seen_events(user_id: str, endpoint: str, start_date: Date, end_date: Date) -> list[SeenEvent]:
