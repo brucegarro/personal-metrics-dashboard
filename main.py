@@ -50,7 +50,6 @@ def read_root():
 
 @app.get("/health")
 async def health_check(redis_client=Depends(get_redis_client)):
-    import logging
     logger = logging.getLogger("health_check")
     access_token = await get_access_token_from_cache(USERID, redis_client=redis_client)
     logger.info(f"Fetched Oura access token for user {USERID}: {bool(access_token)}")
@@ -91,7 +90,6 @@ async def health_check(redis_client=Depends(get_redis_client)):
     default_start_date = date.today() - timedelta(days=90)
     default_end_date = date.today()
 
-    api_data, persisted_data, enqueued_jobs = (None, None, None)
     # Always return metrics_view, even if Oura/Dropbox auth is not valid
     metrics_view = get_metrics_pivot(
         USERID,
@@ -99,18 +97,15 @@ async def health_check(redis_client=Depends(get_redis_client)):
         default_end_date,
     )
     if oura_auth_valid:
-        api_data, persisted_data, enqueued_jobs = pull_data(
+        job_id = pull_data(
             access_token["access_token"],
             start_date=default_start_date,
             end_date=default_end_date,
         )
-        enqueue_atracker_job(enqueued_jobs, USERID)
+        logger.info(f"Oura ETL job enqueued: {job_id}")
 
     return {
         "metrics_view": metrics_view,
-        "api_data": api_data,
-        "persisted_data": persisted_data,
-        "enqueued_jobs": enqueued_jobs,
         "oura_auth_url": oura_auth_url,
         "oura_auth_valid": oura_auth_valid,
         "dropbox_auth_url": dropbox_auth_url,
