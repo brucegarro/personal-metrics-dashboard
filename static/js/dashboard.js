@@ -164,7 +164,49 @@ document.addEventListener("DOMContentLoaded", function() {
             x: { stacked: true }
           }
         },
-        plugins: [ChartDataLabels]
+        plugins: [
+          ChartDataLabels,
+          {
+            id: 'barTotalLabel',
+            afterDatasetsDraw: function(chart) {
+              const ctx = chart.ctx;
+              const metricsView = aggregateWeekly(apiResponse.metrics_view, aggregationMode);
+              // Find all productivity bar metas
+              const barMetas = chart.data.datasets
+                .map((ds, idx) => ({ ds, meta: chart.getDatasetMeta(idx) }))
+                .filter(obj => obj.ds.type === "bar" && obj.ds.stack === "productivity");
+              if (!barMetas.length) return;
+              chart.data.labels.forEach((label, i) => {
+                // Sum all visible productivity bars for this group
+                const visibleKeys = chart.data.datasets
+                  .filter(ds => ds.type === "bar" && ds.stack === "productivity" && !ds.hidden)
+                  .map(ds => ds.label);
+                const d = metricsView[i];
+                const total = visibleKeys
+                  .map(k => d.productivity[k] || 0)
+                  .reduce((a, b) => a + b, 0);
+                // Find the top bar segment for this group
+                let topY = null, x = null;
+                for (const obj of barMetas) {
+                  const bar = obj.meta.data[i];
+                  if (bar && (!topY || bar.y < topY)) {
+                    topY = bar.y;
+                    x = bar.x;
+                  }
+                }
+                if (total > 0 && topY !== null && x !== null) {
+                  ctx.save();
+                  ctx.font = 'bold 16px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'bottom';
+                  ctx.fillStyle = '#222';
+                  ctx.fillText(total.toFixed(2), x, topY - 14);
+                  ctx.restore();
+                }
+              });
+            }
+          }
+        ]
       });
 
       // Render aggregation toggle above categories
