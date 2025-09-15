@@ -27,9 +27,9 @@ document.addEventListener("DOMContentLoaded", function() {
       const wellnessKeys = (Array.isArray(apiResponse.metrics_view) && apiResponse.metrics_view.length > 0 && apiResponse.metrics_view[0].wellness)
         ? Object.keys(apiResponse.metrics_view[0].wellness)
         : [];
-      const productivityKeys = [
-        ...new Set(apiResponse.metrics_view.flatMap(d => Object.keys(d.productivity)))
-      ];
+      const productivityKeys = (Array.isArray(apiResponse.metrics_view) && apiResponse.metrics_view.length > 0)
+        ? [...new Set(apiResponse.metrics_view.flatMap(d => d && d.productivity ? Object.keys(d.productivity) : []))]
+        : [];
 
       // Helper to get week number (Friday start)
       function getWeekStartFriday(dateStr) {
@@ -52,10 +52,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
       // Aggregate metrics by week
       function aggregateWeekly(view, mode) {
+        if (!Array.isArray(view) || view.length === 0) return [];
         if (mode === 'rolling') {
           // Group by week ending on Sunday
           const groups = {};
           view.forEach(row => {
+            if (!row || !row.date) return;
             const d = new Date(row.date);
             // Find next Sunday (week end)
             const day = d.getDay();
@@ -74,12 +76,12 @@ document.addEventListener("DOMContentLoaded", function() {
             // Aggregate wellness (average)
             const wellness = {};
             wellnessKeys.forEach(k => {
-              wellness[k] = rows.map(r => r.wellness[k]).reduce((a,b) => a+b,0) / rows.length;
+              wellness[k] = rows.map(r => (r && r.wellness && r.wellness[k] != null ? r.wellness[k] : 0)).reduce((a,b) => a+b,0) / rows.length;
             });
             // Aggregate productivity (sum)
             const productivity = {};
             productivityKeys.forEach(k => {
-              productivity[k] = rows.map(r => r.productivity[k]||0).reduce((a,b) => a+b,0);
+              productivity[k] = rows.map(r => (r && r.productivity && r.productivity[k] != null ? r.productivity[k] : 0)).reduce((a,b) => a+b,0);
             });
             return {
               date: weekEnd,
@@ -91,6 +93,7 @@ document.addEventListener("DOMContentLoaded", function() {
           // Default: week starting Friday
           const groups = {};
           view.forEach(row => {
+            if (!row || !row.date) return;
             const key = getWeekStartFriday(row.date);
             if (!groups[key]) {
               groups[key] = [];
@@ -102,12 +105,12 @@ document.addEventListener("DOMContentLoaded", function() {
             // Aggregate wellness (average)
             const wellness = {};
             wellnessKeys.forEach(k => {
-              wellness[k] = rows.map(r => r.wellness[k]).reduce((a,b) => a+b,0) / rows.length;
+              wellness[k] = rows.map(r => (r && r.wellness && r.wellness[k] != null ? r.wellness[k] : 0)).reduce((a,b) => a+b,0) / rows.length;
             });
             // Aggregate productivity (sum)
             const productivity = {};
             productivityKeys.forEach(k => {
-              productivity[k] = rows.map(r => r.productivity[k]||0).reduce((a,b) => a+b,0);
+              productivity[k] = rows.map(r => (r && r.productivity && r.productivity[k] != null ? r.productivity[k] : 0)).reduce((a,b) => a+b,0);
             });
             return {
               date: week,
@@ -125,7 +128,7 @@ document.addEventListener("DOMContentLoaded", function() {
           const base = {
             label: key,
             type: "line",
-            data: metricsView.map(d => d.wellness[key]),
+            data: metricsView.map(d => (d && d.wellness && d.wellness[key] != null ? d.wellness[key] : 0)),
             borderColor: fixedColors[key] || `hsl(${idx * 40}, 70%, 50%)`,
             borderWidth: 2,
             fill: false,
@@ -151,7 +154,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const productivityDatasets = productivityKeys.map((key, idx) => ({
           label: key,
           type: "bar",
-          data: metricsView.map(d => d.productivity[key] || 0),
+          data: metricsView.map(d => (d && d.productivity && d.productivity[key] != null ? d.productivity[key] : 0)),
           backgroundColor: fixedColors[key] || `hsl(${idx * 60}, 60%, 60%)`,
           stack: "productivity",
           yAxisID: "y1",
