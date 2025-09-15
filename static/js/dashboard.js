@@ -24,7 +24,9 @@ document.addEventListener("DOMContentLoaded", function() {
         read: "#FFA500",
         study_engineering_and_ml: "#1E90FF"
       };
-      const wellnessKeys = Object.keys(apiResponse.metrics_view[0].wellness);
+      const wellnessKeys = (Array.isArray(apiResponse.metrics_view) && apiResponse.metrics_view.length > 0 && apiResponse.metrics_view[0].wellness)
+        ? Object.keys(apiResponse.metrics_view[0].wellness)
+        : [];
       const productivityKeys = [
         ...new Set(apiResponse.metrics_view.flatMap(d => Object.keys(d.productivity)))
       ];
