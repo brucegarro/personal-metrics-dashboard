@@ -62,7 +62,7 @@ services:
         environment:
           - DEFAULT_USER_ID=appuser
         env_file: .env
-        command: ["rq", "worker", "-u", "${REDIS_URL}", "etl", "--max-jobs", "1"]
+        command: ["rq", "worker", "-u", "${REDIS_URL}", "etl", "--max-jobs", "2"]
         restart: unless-stopped
         depends_on:
             db:

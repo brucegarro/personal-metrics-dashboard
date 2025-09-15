@@ -88,13 +88,9 @@ def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str
             app_secret=app_secret,
         )
 
-    token = access_token or os.environ.get("DROPBOX_ACCESS_TOKEN")
-    if not token:
-        raise RuntimeError(
-            "No Dropbox credentials found. Set DROPBOX_REFRESH_TOKEN with app creds, "
-            "or DROPBOX_ACCESS_TOKEN, or use DropboxAuthManager to bootstrap."
-        )
-    return dropbox.Dropbox(token)
+    raise RuntimeError(
+        "No Dropbox credentials found."
+    )
 
 
 class DropboxAuthManager:
