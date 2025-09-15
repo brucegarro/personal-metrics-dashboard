@@ -169,7 +169,7 @@ document.addEventListener("DOMContentLoaded", function() {
           responsive: true,
           interaction: { mode: "index", intersect: false },
           plugins: {
-            legend: { position: "top" },
+            legend: { display: false },
             tooltip: { mode: "index", intersect: false },
             datalabels: {
               display: function(context) {
