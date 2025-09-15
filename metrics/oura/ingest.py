@@ -118,7 +118,7 @@ def pull_data(access_token: str, start_date: date, end_date: date, user_id="bruc
 			)
 
 			q = get_queue("etl")
-			job = q.enqueue(run_etl_job, endpoint, date.today().isoformat(), user_id)
+			job = q.enqueue(run_etl_job, endpoint, date.today().isoformat(), user_id, job_timeout=300)
 			enqueued_jobs[endpoint] = job.id
 
 	return api_data, persisted_data, enqueued_jobs
