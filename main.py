@@ -69,7 +69,11 @@ async def health_check(redis_client=Depends(get_redis_client)):
     dbx_mgr = DropboxAuthManager()
     dbx_token = await get_dropbox_token(USERID)
     logger.info(f"Fetched Dropbox token for user {USERID}: {bool(dbx_token)}")
-    if not dbx_token:
+    dbx_token_expired = False
+    if dbx_token and "expires_at" in dbx_token:
+        dbx_token_expired = int(time.time()) > dbx_token["expires_at"]
+    if not dbx_token or dbx_token_expired:
+        logger.info("Dropbox token missing or expired, generating auth URL.")
         if DROPBOX_REDIRECT_URI:
             next_url = "/dropbox_start"
             if DOMAIN:
@@ -83,6 +87,7 @@ async def health_check(redis_client=Depends(get_redis_client)):
             dropbox_auth_url = next_url
         else:
             dropbox_auth_url = dbx_mgr.get_authorize_url()
+        dropbox_auth_valid = False
     else:
         dropbox_auth_valid = True
 

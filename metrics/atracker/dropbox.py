@@ -42,17 +42,10 @@ def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str
     - Else if `DROPBOX_ACCESS_TOKEN` in env or provided param: use access token.
     - For async usage inside the web app, prefer DropboxAuthManager.get_cached_client.
     """
-    # Try Redis cache first (sync bridging for worker/ETL contexts)
+    # Always use sync bridging for worker/ETL contexts
     user_id = user_id or os.environ.get("DEFAULT_USER_ID", "user")
     try:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop and loop.is_running():
-            cached = None  # avoid blocking event loop; the web uses async helpers
-        else:
-            cached = asyncio.run(get_dropbox_token(user_id))
+        cached = asyncio.run(get_dropbox_token(user_id))
         if cached and cached.get("refresh_token"):
             return dropbox.Dropbox(
                 oauth2_refresh_token=cached["refresh_token"],
@@ -70,16 +63,8 @@ def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str
     if refresh_token and app_key and app_secret:
         # Opportunistically persist env-provided refresh token for this user
         try:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
             payload = {"refresh_token": refresh_token, "expires_in": 4 * 60 * 60}
-            if loop and loop.is_running():
-                # Avoid blocking event loop; skip caching here (web path uses async manager)
-                pass
-            else:
-                asyncio.run(cache_dropbox_token(user_id, payload))
+            asyncio.run(cache_dropbox_token(user_id, payload))
         except Exception:
             pass
         return dropbox.Dropbox(

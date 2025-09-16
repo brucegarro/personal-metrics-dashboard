@@ -24,5 +24,5 @@ def run_etl_job(endpoint: Endpoint, date_str: str, user_id: str) -> EtlResult:
 
 def enqueue_atracker_job(enqueued_jobs, user_id):
     q = get_queue("etl")
-    job = q.enqueue(run_etl_job, "atracker", date.today().isoformat(), user_id, job_timeout=300)
+    job = q.enqueue(run_etl_job, "atracker", date.today().isoformat(), user_id)
     enqueued_jobs["atracker"] = job.id
