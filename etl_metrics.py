@@ -22,8 +22,8 @@ DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "user")
 
 
 ### ATRACKER ETL
-def etl_daily_atracker_task_entries(user_id: str) -> int:
-    downloaded_files = sync_folder(user_id=user_id)
+async def etl_daily_atracker_task_entries(user_id: str) -> int:
+    downloaded_files = await sync_folder(user_id=user_id)
     updates = 0
     created = []; updated = []; unchanged = []
 

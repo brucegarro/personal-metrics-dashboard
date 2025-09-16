@@ -67,7 +67,7 @@ def _download_file(
     return local_path
 
 
-def sync_folder(
+async def sync_folder(
     dropbox_path: str = DEFAULT_DROPBOX_FOLDER,
     local_folder: str = DEFAULT_LOCAL_FOLDER,
     dbx: Optional[dropbox.Dropbox] = None,
@@ -80,7 +80,7 @@ def sync_folder(
     import logging
     logger = logging.getLogger("atracker_etl")
     if dbx is None:
-        dbx = get_dropbox_client(user_id=user_id)
+        dbx = await get_dropbox_client(user_id=user_id)
 
     downloaded_files: list[str] = []
     logger.info(f"Listing Dropbox folder: {dropbox_path}")

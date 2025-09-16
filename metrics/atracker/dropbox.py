@@ -33,7 +33,7 @@ async def delete_dropbox_token(user_id: str) -> None:
     await _redis.delete(_dropbox_key(user_id))
 
 
-def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str] = None) -> dropbox.Dropbox:
+async def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str] = None) -> dropbox.Dropbox:
     """Return a Dropbox client.
 
     Priority:
@@ -42,10 +42,9 @@ def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str
     - Else if `DROPBOX_ACCESS_TOKEN` in env or provided param: use access token.
     - For async usage inside the web app, prefer DropboxAuthManager.get_cached_client.
     """
-    # Always use sync bridging for worker/ETL contexts
     user_id = user_id or os.environ.get("DEFAULT_USER_ID", "user")
     try:
-        cached = asyncio.run(get_dropbox_token(user_id))
+        cached = await get_dropbox_token(user_id)
         if cached and cached.get("refresh_token"):
             return dropbox.Dropbox(
                 oauth2_refresh_token=cached["refresh_token"],
@@ -53,25 +52,7 @@ def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str
                 app_secret=DROPBOX_APP_SECRET,
             )
     except Exception:
-        # Fall through to env-based methods on any cache failure
         pass
-
-    refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN")
-    app_key = DROPBOX_APP_KEY
-    app_secret = DROPBOX_APP_SECRET
-
-    if refresh_token and app_key and app_secret:
-        # Opportunistically persist env-provided refresh token for this user
-        try:
-            payload = {"refresh_token": refresh_token, "expires_in": 4 * 60 * 60}
-            asyncio.run(cache_dropbox_token(user_id, payload))
-        except Exception:
-            pass
-        return dropbox.Dropbox(
-            oauth2_refresh_token=refresh_token,
-            app_key=app_key,
-            app_secret=app_secret,
-        )
 
     raise RuntimeError(
         "No Dropbox credentials found."
