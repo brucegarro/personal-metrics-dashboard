@@ -90,12 +90,6 @@ async def health_check(redis_client=Depends(get_redis_client)):
     default_start_date = date.today() - timedelta(days=90)
     default_end_date = date.today()
 
-    # Always return metrics_view, even if Oura/Dropbox auth is not valid
-    metrics_view = get_metrics_pivot(
-        USERID,
-        default_start_date,
-        default_end_date,
-    )
     if oura_auth_valid:
         job_id = pull_data(
             access_token["access_token"],
@@ -103,6 +97,18 @@ async def health_check(redis_client=Depends(get_redis_client)):
             end_date=default_end_date,
         )
         logger.info(f"Oura ETL job enqueued: {job_id}")
+
+    # Always enqueue Atracker ETL job
+    enqueued_jobs = {}
+    enqueue_atracker_job(enqueued_jobs, USERID)
+    logger.info(f"Atracker ETL job enqueued: {enqueued_jobs.get('atracker')}")
+
+     # Always return metrics_view, even if Oura/Dropbox auth is not valid
+    metrics_view = get_metrics_pivot(
+        USERID,
+        default_start_date,
+        default_end_date,
+    )
 
     return {
         "metrics_view": metrics_view,
