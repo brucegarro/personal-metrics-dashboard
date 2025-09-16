@@ -31,6 +31,10 @@ services:
         context: .
         dockerfile: Dockerfile
       container_name: fastapi-worker
+      environment:
+          - PYTHONDONTWRITEBYTECODE=1
+          - PYTHONUNBUFFERED=1
+          - PIP_NO_CACHE_DIR=1
       env_file: .env
       volumes:
         - .:/app
