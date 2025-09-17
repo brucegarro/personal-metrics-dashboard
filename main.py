@@ -16,7 +16,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.responses import RedirectResponse
 
-from metrics.oura.ingest import get_oura_auth_url, get_and_cache_access_token, get_access_token_from_cache, pull_data
+from metrics.oura.ingest import (
+    get_oura_auth_url,
+    get_and_cache_access_token,
+    get_valid_access_token,
+    pull_data,
+)
 from metrics.view import get_metrics_pivot
 from metrics.atracker.dropbox import DropboxAuthManager, get_dropbox_token
 import os
@@ -51,17 +56,16 @@ def read_root():
 @app.get("/health")
 async def health_check(redis_client=Depends(get_redis_client)):
     logger = logging.getLogger("health_check")
-    access_token = await get_access_token_from_cache(USERID, redis_client=redis_client)
-    logger.info(f"Fetched Oura access token for user {USERID}: {bool(access_token)}")
-    is_expired = access_token and int(time.time()) > access_token.get("expires_at", 0)
+    access_token = await get_valid_access_token(USERID, redis_client=redis_client)
+    logger.info(f"Fetched Oura access token for user {USERID} (valid or refreshed): {bool(access_token)}")
 
     oura_auth_url = None
     dropbox_auth_url = None
     oura_auth_valid = False
     dropbox_auth_valid = False
 
-    if access_token is None or is_expired:
-        logger.info("Oura access token missing or expired, generating auth URL.")
+    if access_token is None:
+        logger.info("Oura access token missing and cannot be refreshed; generating auth URL.")
         oura_auth_url = get_oura_auth_url()
     else:
         oura_auth_valid = True
