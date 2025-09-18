@@ -29,13 +29,12 @@ def aggregate_task_entries_to_metrics(dates: set[Date], user_id: str) -> tuple[i
     task_hours: dict[tuple[str, Date], float] = defaultdict(float)
 
     with SessionLocal() as s:
-        entries = (
+        query = (
             s.query(TaskEntry)
             .filter(TaskEntry.start_time.cast(SQLDate).in_(dates))
-            .all()
         )
-
-        for entry in entries:
+        # Stream rows to avoid loading the entire result set into memory
+        for entry in query.yield_per(100):
             if not entry.end_time or entry.deleted_new:
                 continue  # skip incomplete or deleted tasks
 
@@ -241,3 +240,64 @@ def upsert_task_entries_row_by_row(entries: List[TaskEntry]) -> Tuple[List[TaskE
 
     return created, updated, unchanged
 
+
+def upsert_task_entries_minimal(entries: List[TaskEntry]) -> Tuple[int, int, set[Date]]:
+    """
+    Memory-friendly upsert for TaskEntry.
+
+    Returns (created_count, updated_count, affected_dates).
+    Detaches ORM objects after each commit to keep the session small.
+    """
+    created_count, updated_count = 0, 0
+    affected_dates: set[Date] = set()
+
+    with SessionLocal() as s:
+        for entry in entries:
+            try:
+                entry.task_id = clean_task_id(entry.task_id)
+
+                existing = (
+                    s.query(TaskEntry)
+                    .filter_by(global_identifier=entry.global_identifier)
+                    .one_or_none()
+                )
+
+                if existing:
+                    changed = False
+                    fields = [
+                        "task_id",
+                        "finished",
+                        "deleted_new",
+                        "notes",
+                        "create_timestamp",
+                        "start_time",
+                        "end_time",
+                        "last_update_timestamp",
+                    ]
+                    for field in fields:
+                        new_val = getattr(entry, field)
+                        if getattr(existing, field) != new_val:
+                            setattr(existing, field, new_val)
+                            changed = True
+
+                    if changed:
+                        s.commit()
+                        updated_count += 1
+                        if existing.start_time:
+                            affected_dates.add(existing.start_time.date())
+                    # Detach to keep session small
+                    s.expunge(existing)
+                else:
+                    s.add(entry)
+                    s.commit()
+                    created_count += 1
+                    if entry.start_time:
+                        affected_dates.add(entry.start_time.date())
+                    s.expunge(entry)
+
+            except Exception:
+                s.rollback()
+                # Skip this entry on error but continue processing others
+                continue
+
+    return created_count, updated_count, affected_dates

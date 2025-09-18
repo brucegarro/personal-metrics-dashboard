@@ -53,6 +53,11 @@ def serve_dashboard():
 def read_root():
     return {"message": "Welcome to the Personal Metrics Dashboard"}
 
+@app.get("/status")
+async def status_check():
+    return {"status": "ok"}
+
+
 @app.get("/health")
 async def health_check(redis_client=Depends(get_redis_client)):
     logger = logging.getLogger("health_check")
@@ -107,10 +112,19 @@ async def health_check(redis_client=Depends(get_redis_client)):
         )
         logger.info(f"Oura ETL job enqueued: {job_id}")
 
-    # Always enqueue Atracker ETL job
+    # Enqueue Atracker ETL job at most once every 2 minutes using a Redis lock
     enqueued_jobs = {}
-    enqueue_atracker_job(enqueued_jobs, USERID)
-    logger.info(f"Atracker ETL job enqueued: {enqueued_jobs.get('atracker')}")
+    try:
+        lock_key = "locks:atracker:enqueue"
+        can_enqueue = await redis_client.set(lock_key, "1", ex=60, nx=True)
+    except Exception:
+        # If redis doesn't support SET NX in this context (e.g., tests), allow enqueue
+        can_enqueue = True
+    if can_enqueue:
+        enqueue_atracker_job(enqueued_jobs, USERID)
+        logger.info(f"Atracker ETL job enqueued: {enqueued_jobs.get('atracker')}")
+    else:
+        logger.info("Atracker ETL enqueue skipped due to lock (within 2 minutes).")
 
      # Always return metrics_view, even if Oura/Dropbox auth is not valid
     metrics_view = get_metrics_pivot(

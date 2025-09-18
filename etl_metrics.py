@@ -10,7 +10,7 @@ from db import SessionLocal, ENGINE
 from models import Metric
 from s3io import _list_ndjson_gz_keys, _load_ndjson_gz_as_polars
 from metrics.atracker.ingest import sync_folder, parse_atracker_datafile
-from db import upsert_task_entries_row_by_row, task_entry_from_json, aggregate_task_entries_to_metrics
+from db import task_entry_from_json, aggregate_task_entries_to_metrics, upsert_task_entries_minimal
 
 BUCKET = os.getenv("S3_BUCKET")
 ENV = os.getenv("S3_ENV", "dev")
@@ -22,33 +22,57 @@ DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "user")
 
 
 ### ATRACKER ETL
-async def etl_daily_atracker_task_entries(user_id: str) -> int:
-    downloaded_files = await sync_folder(user_id=user_id)
+def _chunked(iterable, size: int):
+    buf = []
+    for item in iterable:
+        buf.append(item)
+        if len(buf) >= size:
+            yield buf
+            buf = []
+    if buf:
+        yield buf
+
+
+def atracker_process_file(filepath: str, user_id: str) -> int:
+    """Process a single Atracker file: upsert entries and aggregate metrics.
+
+    Returns total updated/created counts including metrics.
+    """
     updates = 0
-    created = []; updated = []; unchanged = []
-
-    # Create or update TaskEntry rows
-    for filepath in downloaded_files:
-        task_entries = [
-            task_entry_from_json(task_entry_json)
-            for task_entry_json
-            in parse_atracker_datafile(filepath)
-        ]
-        _created, _updated, _unchanged = upsert_task_entries_row_by_row(task_entries)
-        created += _created
-        updated += _updated
-        unchanged += _unchanged
-
-    updates += len(created) + len(updated)
-    dates = { entry.start_time.date() for entry in created + updated }
-
-    if not dates:
+    affected_dates: set = set()
+    for batch in _chunked(parse_atracker_datafile(filepath), 500):
+        task_entries = [task_entry_from_json(item) for item in batch]
+        c, u, dates = upsert_task_entries_minimal(task_entries)
+        updates += c + u
+        affected_dates |= dates
+    if not affected_dates:
         return updates
-
-    metrics_created, metrics_updated = aggregate_task_entries_to_metrics(dates, user_id)
+    metrics_created, metrics_updated = aggregate_task_entries_to_metrics(affected_dates, user_id)
     updates += metrics_created + metrics_updated
-
     return updates
+
+async def etl_daily_atracker_task_entries(user_id: str) -> int:
+    """Orchestrator: sync folder, then enqueue per-file jobs in worker via jobs.run_etl_job.
+
+    Returns number of files discovered; processing happens in separate jobs.
+    """
+    downloaded_files = await sync_folder(user_id=user_id)
+    # Throttle number of files if configured
+    max_files_env = os.getenv("ATRACKER_MAX_FILES_PER_RUN")
+    if max_files_env:
+        try:
+            max_files = int(max_files_env)
+            if max_files > 0:
+                downloaded_files = downloaded_files[:max_files]
+        except Exception:
+            pass
+    # Enqueue per-file jobs using the RQ queue
+    from queueing import get_queue
+    from jobs import run_etl_job
+    q = get_queue("etl")
+    for fp in downloaded_files:
+        q.enqueue(run_etl_job, "atracker_file", fp, user_id)
+    return len(downloaded_files)
 
 ## OURA ETL
 def _raw_glob(vendor: str, api: str, endpoint: str, date: str) -> str:

@@ -1,5 +1,6 @@
 import os
 import json
+from typing import Iterator
 from datetime import datetime
 from typing import Optional
 
@@ -8,25 +9,23 @@ import dropbox
 from .dropbox import get_dropbox_client
 
 
-def parse_atracker_datafile(filepath: str) -> dict:
-    """Parse an Atracker JSON datafile and return TaskEntry changes.
+def parse_atracker_datafile(filepath: str) -> Iterator[dict]:
+    """Stream parse an Atracker JSON datafile and yield TaskEntry changes one-by-one.
 
-    Example TaskEntry structure:
-        {
-            "properties": [
-                {"propertyName": "startTime", "value": ["date", 1755730914052.386], "type": 0},
-                {"propertyName": "endTime", "value": ["date", 1755731386546.753], "type": 0},
-                ...
-            ],
-            "type": 100,
-            "globalIdentifier": "..."
-        }
+    Yields TaskEntry dicts in the same structure as stored under
+    changesByEntity.TaskEntry[]. Falls back to json.load if ijson is unavailable.
     """
-    with open(filepath, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    tasks_data = data["changesByEntity"]["TaskEntry"]
-    return tasks_data
+    try:
+        import ijson  # type: ignore
+        with open(filepath, "rb") as f:
+            for item in ijson.items(f, "changesByEntity.TaskEntry.item"):
+                yield item
+    except Exception:
+        # Fallback: load whole file (less memory friendly)
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            for item in data.get("changesByEntity", {}).get("TaskEntry", []) or []:
+                yield item
 
 
 # Defaults can be overridden at call-time

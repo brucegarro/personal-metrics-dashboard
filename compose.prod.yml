@@ -19,8 +19,9 @@ services:
           - PYTHONDONTWRITEBYTECODE=1
           - PYTHONUNBUFFERED=1
           - PIP_NO_CACHE_DIR=1
-          - WEB_CONCURRENCY=2
-          - WEB_THREADS=4
+          - MALLOC_ARENA_MAX=2
+          - WEB_CONCURRENCY=1
+          - WEB_THREADS=1
           - WEB_TIMEOUT=60
         env_file: .env
         restart: unless-stopped
@@ -45,8 +46,8 @@ services:
             migrate:
                 condition: service_completed_successfully
         healthcheck:
-            # if curl isn't in your image, swap for wget/netcat or a tiny python check
-            test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+            # minimal health endpoint that avoids heavy work
+            test: ["CMD-SHELL", "curl -fsS http://localhost/status || exit 1"]
             interval: 15s
             timeout: 3s
             retries: 5
@@ -63,6 +64,7 @@ services:
         container_name: fastapi-worker-prod
         environment:
           - DEFAULT_USER_ID=appuser
+          - MALLOC_ARENA_MAX=2
         env_file: .env
         command: ["rq", "worker", "-u", "${REDIS_URL}", "etl", "--max-jobs", "2"]
         restart: unless-stopped

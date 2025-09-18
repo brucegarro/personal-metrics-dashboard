@@ -49,9 +49,17 @@ class Metric(Base):
                 f"value={self.value})>")
 
 
-def ms_to_datetime(ms: float) -> datetime:
-    """Convert millisecond timestamp (from JSON) to UTC datetime."""
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+def ms_to_datetime(ms) -> datetime:
+    """Convert millisecond timestamp (int/float/Decimal) to UTC datetime.
+
+    ijson yields numbers as Decimal; coerce to float to satisfy datetime.
+    """
+    try:
+        ms_val = float(ms)
+    except Exception:
+        # In case of unexpected types (e.g., strings), try safe fallback
+        ms_val = float(str(ms))
+    return datetime.fromtimestamp(ms_val / 1000.0, tz=timezone.utc)
 
 
 class TaskEntry(Base):

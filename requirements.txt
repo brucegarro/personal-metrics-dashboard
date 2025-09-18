@@ -17,3 +17,4 @@ dropbox==12.0.2
 pytest==8.4.2
 pytest-asyncio==1.2.0
 httpx==0.27.0
+ijson==3.2.3
