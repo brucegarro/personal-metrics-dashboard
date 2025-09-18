@@ -5,7 +5,8 @@ version: "3.9"
 
 services:
   app:
-        mem_limit: 320m
+        mem_limit: 120m
+        memory-swap: 120m
         build:
             context: .
             dockerfile: Dockerfile
@@ -57,7 +58,8 @@ services:
         tmpfs:
           - /tmp
   worker:
-        mem_limit: 320m
+        mem_limit: 200m
+        memory-swap: 200m
         build:
             context: .
             dockerfile: Dockerfile
