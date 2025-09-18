@@ -1,4 +1,5 @@
 from datetime import date
+import asyncio
 from queueing import get_queue
 from typing import Literal, TypedDict
 from etl_metrics import etl_daily_sleep_day, etl_daily_readiness_day, etl_daily_atracker_task_entries
@@ -17,7 +18,8 @@ def run_etl_job(endpoint: Endpoint, date_str: str, user_id: str) -> EtlResult:
     elif endpoint == "daily_readiness":
         n = etl_daily_readiness_day(date_str, user_id)
     elif endpoint == "atracker":
-        n = etl_daily_atracker_task_entries(user_id)
+        # etl_daily_atracker_task_entries is async; run it in a fresh event loop
+        n = asyncio.run(etl_daily_atracker_task_entries(user_id))
     else:
         raise ValueError(f"Unsupported endpoint: {endpoint}")
     return {"endpoint": endpoint, "date": date_str, "user_id": user_id, "inserted": n}
