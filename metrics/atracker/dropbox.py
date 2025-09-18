@@ -3,10 +3,12 @@ import time
 from typing import Optional, Dict, Any
 import asyncio
 
-import dropbox
-from dropbox.oauth import DropboxOAuth2FlowNoRedirect, DropboxOAuth2Flow
 from json import dumps as json_dumps, loads as json_loads
 from auth.cache import get_async_redis, REDIS_TTL_SECONDS, auth_key
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import dropbox  # type: ignore
+    from dropbox.oauth import DropboxOAuth2FlowNoRedirect, DropboxOAuth2Flow  # type: ignore
 
 
 DROPBOX_APP_KEY = os.environ.get("DROPBOX_APP_KEY")
@@ -33,7 +35,7 @@ async def delete_dropbox_token(user_id: str) -> None:
     await _redis.delete(_dropbox_key(user_id))
 
 
-async def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str] = None) -> dropbox.Dropbox:
+async def get_dropbox_client(access_token: Optional[str] = None, user_id: Optional[str] = None):
     """Return a Dropbox client.
 
     Priority:
@@ -46,7 +48,8 @@ async def get_dropbox_client(access_token: Optional[str] = None, user_id: Option
     try:
         cached = await get_dropbox_token(user_id)
         if cached and cached.get("refresh_token"):
-            return dropbox.Dropbox(
+            import dropbox as _dropbox  # lazy import
+            return _dropbox.Dropbox(
                 oauth2_refresh_token=cached["refresh_token"],
                 app_key=DROPBOX_APP_KEY,
                 app_secret=DROPBOX_APP_SECRET,
@@ -73,8 +76,9 @@ class DropboxAuthManager:
         if not self.app_key or not self.app_secret:
             raise RuntimeError("DROPBOX_APP_KEY and DROPBOX_APP_SECRET must be set in the environment")
 
-    def _flow(self) -> DropboxOAuth2FlowNoRedirect:
+    def _flow(self):
         # Request offline access to receive a refresh token
+        from dropbox.oauth import DropboxOAuth2FlowNoRedirect  # lazy import
         return DropboxOAuth2FlowNoRedirect(self.app_key, self.app_secret, token_access_type="offline")
 
     def get_authorize_url(self) -> str:
@@ -94,24 +98,27 @@ class DropboxAuthManager:
         await cache_dropbox_token(user_id, token)
         return token
 
-    async def get_cached_client(self, user_id: str) -> dropbox.Dropbox:
+    async def get_cached_client(self, user_id: str):
         token = await get_dropbox_token(user_id)
         # Prefer refresh-token based client which auto-refreshes
         if token and token.get("refresh_token"):
-            return dropbox.Dropbox(
+            import dropbox as _dropbox  # lazy import
+            return _dropbox.Dropbox(
                 oauth2_refresh_token=token["refresh_token"],
                 app_key=self.app_key,
                 app_secret=self.app_secret,
             )
         # Fallback to access token if available
         if token and token.get("access_token"):
-            return dropbox.Dropbox(token["access_token"])
+            import dropbox as _dropbox  # lazy import
+            return _dropbox.Dropbox(token["access_token"])
         # Finally, use env-based fallback
         return get_dropbox_client()
 
     # -------- Redirect-based OAuth2 (smoother UX) --------
-    def _redirect_flow(self, redirect_uri: str, session: dict) -> DropboxOAuth2Flow:
+    def _redirect_flow(self, redirect_uri: str, session: dict):
         # DropboxOAuth2Flow uses session to store CSRF token; we provide a dict
+        from dropbox.oauth import DropboxOAuth2Flow  # lazy import
         return DropboxOAuth2Flow(
             consumer_key=self.app_key,
             consumer_secret=self.app_secret,

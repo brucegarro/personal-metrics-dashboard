@@ -1,19 +1,25 @@
 import os, io, gzip, json, hashlib
 from datetime import datetime, timezone
-import boto3
-import polars as pl
 
 BUCKET = os.getenv("S3_BUCKET")
 ENV = os.getenv("ENV", "dev")
 
-_session = boto3.session.Session()
-_s3 = _session.client(
-    "s3",
-    endpoint_url=os.getenv("S3_ENDPOINT_URL") or None,
-    aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
-    aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
-    region_name=os.getenv("S3_REGION", "us-east-1"),
-)
+# Lazy-initialized S3 client to avoid loading boto3 in processes that don't need it
+_s3 = None
+
+def _get_s3():
+    global _s3
+    if _s3 is None:
+        import boto3  # lazy import
+        session = boto3.session.Session()
+        _s3 = session.client(
+            "s3",
+            endpoint_url=os.getenv("S3_ENDPOINT_URL") or None,
+            aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+            aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+            region_name=os.getenv("S3_REGION", "us-east-1"),
+        )
+    return _s3
 
 
 def write_jsonl_gz(records, vendor, api, endpoint, schema="v1"):
@@ -38,7 +44,7 @@ def write_jsonl_gz(records, vendor, api, endpoint, schema="v1"):
     data_key = f"{prefix}part={batch_id}-00001.jsonl.gz"
     meta_key = f"{prefix}part={batch_id}-00001.meta.json"
 
-    _s3.put_object(
+    _get_s3().put_object(
         Bucket=BUCKET,
         Key=data_key,
         Body=body,
@@ -56,7 +62,7 @@ def write_jsonl_gz(records, vendor, api, endpoint, schema="v1"):
         "hour": hour,
         "md5": etag,
     }
-    _s3.put_object(
+    _get_s3().put_object(
         Bucket=BUCKET,
         Key=meta_key,
         Body=json.dumps(meta).encode(),
@@ -74,9 +80,9 @@ def _list_ndjson_gz_keys(vendor: str, api: str, endpoint: str, date_str: str) ->
     token: str | None = None
     while True:
         if token is None:
-            resp = _s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
+            resp = _get_s3().list_objects_v2(Bucket=BUCKET, Prefix=prefix)
         else:
-            resp = _s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, ContinuationToken=token)
+            resp = _get_s3().list_objects_v2(Bucket=BUCKET, Prefix=prefix, ContinuationToken=token)
         for obj in resp.get("Contents", []):
             k = obj["Key"]
             # keep only the data parts
@@ -88,11 +94,15 @@ def _list_ndjson_gz_keys(vendor: str, api: str, endpoint: str, date_str: str) ->
             break
     return keys
 
-def _load_ndjson_gz_as_polars(keys: list[str]) -> pl.DataFrame:
-    """Fetch & decompress all keys, parse NDJSON lines, return a Polars DF."""
+def _load_ndjson_gz_as_polars(keys: list[str]):
+    """Fetch & decompress all keys, parse NDJSON lines, return a Polars DF.
+
+    Polars is imported lazily to avoid loading it in processes that don't need it.
+    """
+    import polars as pl  # lazy import
     rows: list[dict] = []
     for key in keys:
-        obj = _s3.get_object(Bucket=BUCKET, Key=key)
+        obj = _get_s3().get_object(Bucket=BUCKET, Key=key)
         raw = obj["Body"].read()
         # try gzip; fall back to plain bytes just in case
         try:

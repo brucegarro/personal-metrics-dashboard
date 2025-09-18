@@ -1,7 +1,7 @@
 import logging
 from enum import Enum
 from datetime import datetime
-from db import get_metrics
+from db import iter_metrics
 
 class MetricCategory(Enum):
     WELLNESS = "wellness"
@@ -19,10 +19,10 @@ class MetricCategory(Enum):
 def get_metrics_pivot(user_id: str, start_date, end_date) -> list[dict]:
     logger = logging.getLogger("metrics_view")
     logger.info(f"Fetching metrics for user {user_id} from {start_date} to {end_date}")
-    metrics = get_metrics(user_id, start_date, end_date)
-    logger.info(f"Fetched {len(metrics)} metric rows from DB.")
+    count = 0
     pivoted = {}
-    for metric in metrics:
+    for metric in iter_metrics(user_id, start_date, end_date):
+        count += 1
         day_str = metric.date.isoformat()
         if not day_str in pivoted:
             pivoted[day_str] = {
@@ -34,7 +34,7 @@ def get_metrics_pivot(user_id: str, start_date, end_date) -> list[dict]:
         ).value
         pivoted[day_str][category][metric.name] = metric.value
     pivoted_list = list(pivoted.values())
-    logger.info(f"Pivoted metrics into {len(pivoted_list)} days.")
+    logger.info(f"Fetched {count} metric rows and pivoted into {len(pivoted_list)} days.")
     pivoted_list.sort(key=lambda x: datetime.strptime(x["date"], "%Y-%m-%d"))
 
     return pivoted_list

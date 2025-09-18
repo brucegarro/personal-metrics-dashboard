@@ -91,9 +91,26 @@ def get_metrics(user_id: str, start_date: Date, end_date: Date) -> list[dict]:
             )
             .order_by(Metric.date, Metric.endpoint, Metric.name)
         )
-        result = s.execute(stmt).all()
-        logger.info(f"Fetched {len(result)} metrics from DB.")
-        return result
+        # Return a list for compatibility, but stream the DB result to reduce peak memory
+        result_iter = s.execute(stmt)
+        rows = [row for row in result_iter]
+        logger.info(f"Fetched {len(rows)} metrics from DB.")
+        return rows
+
+def iter_metrics(user_id: str, start_date: Date, end_date: Date):
+    """Stream metrics rows without materializing the entire result set."""
+    with SessionLocal() as s:
+        stmt = (
+            select(Metric.date, Metric.endpoint, Metric.name, Metric.value)
+            .where(
+                Metric.user_id == user_id,
+                Metric.date >= start_date,
+                Metric.date <= end_date,
+            )
+            .order_by(Metric.date, Metric.endpoint, Metric.name)
+        )
+        for row in s.execute(stmt):
+            yield row
 
 
 def get_seen_events(user_id: str, endpoint: str, start_date: Date, end_date: Date) -> list[SeenEvent]:
